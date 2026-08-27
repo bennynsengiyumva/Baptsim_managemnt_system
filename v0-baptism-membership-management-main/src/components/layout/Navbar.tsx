@@ -4,8 +4,9 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Bell, User, LogOut, Settings, Moon, Sun, Globe } from 'lucide-react';
 import { logoutUser, selectUser } from '@/store/authStore';
 import { toggleDarkMode, selectDarkMode, setLanguage, selectLanguage } from '@/store/slices/uiSlice';
-import { selectUnreadCount } from '@/store/slices/notificationSlice';
+import { selectUnreadCount, setUnreadCount } from '@/store/slices/notificationSlice';
 import { notificationService } from '@/services/notificationService';
+import { userService } from '@/services/userService';
 import { AppNotification } from '@/types';
 import { useTranslation } from 'react-i18next';
 
@@ -27,10 +28,13 @@ export default function Navbar() {
     if (!showNotifications) return;
     notificationService.getMyNotifications().then((res: any) => {
       const data = Array.isArray(res) ? res : (res.data || []);
-      setNotifications(data.map((n: any) => ({
-        ...n,
-        read: n.read ?? n.isRead ?? false,
-      })));
+      const sorted = data
+        .map((n: any) => ({
+          ...n,
+          read: n.read ?? n.isRead ?? false,
+        }))
+        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setNotifications(sorted);
     }).catch(() => {});
   }, [showNotifications]);
 
@@ -52,16 +56,22 @@ export default function Navbar() {
     navigate('/login');
   };
 
-  const toggleLanguage = () => {
-    const langs: Record<string, string> = { en: 'fr', fr: 'rw', rw: 'en' };
-    const newLanguage = langs[language] || 'en';
-    dispatch(setLanguage(newLanguage as 'en' | 'rw' | 'fr'));
-    i18n.changeLanguage(newLanguage);
+  const toggleLanguage = (lang: string) => {
+    dispatch(setLanguage(lang as 'en' | 'rw'));
+    i18n.changeLanguage(lang);
+    localStorage.setItem('language', lang);
+    // Save to backend
+    if (user?.id) {
+      userService.updateProfile({ preferredLanguage: lang }).catch(() => {});
+    }
   };
 
   const handleMarkRead = async (id: string) => {
     await notificationService.markAsRead(id);
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    // Update unread count in Redux
+    const count = await notificationService.getUnreadCount();
+    dispatch(setUnreadCount(typeof count === 'number' ? count : 0));
   };
 
   const displayName = user?.fullName || user?.email || 'User';
@@ -93,14 +103,18 @@ export default function Navbar() {
 
         {/* Right Section */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Language Toggle */}
-          <button
-            onClick={toggleLanguage}
-            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-            title={language === 'en' ? 'English' : language === 'fr' ? 'Français' : 'Kinyarwanda'}
-          >
-            <Globe size={18} />
-          </button>
+          {/* Language Selector */}
+          <div className="relative">
+            <select
+              value={language}
+              onChange={(e) => toggleLanguage(e.target.value)}
+              className="appearance-none bg-transparent border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors pr-8"
+              style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center' }}
+            >
+              <option value="en">English</option>
+              <option value="rw">Kinyarwanda</option>
+            </select>
+          </div>
 
           {/* Dark Mode Toggle */}
           <button
@@ -128,7 +142,7 @@ export default function Navbar() {
             {showNotifications && (
               <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-slate-700 rounded-xl shadow-xl border border-gray-200 dark:border-slate-600 overflow-hidden z-50">
                 <div className="p-3 border-b border-gray-200 dark:border-slate-600 flex items-center justify-between">
-                  <h3 className="font-semibold text-gray-900 dark:text-white text-sm">Notifications</h3>
+                  <h3 className="font-semibold text-gray-900 dark:text-white text-sm">{t('common.notifications')}</h3>
                   <Link
                     to="/notifications"
                     onClick={() => setShowNotifications(false)}
@@ -139,7 +153,7 @@ export default function Navbar() {
                 </div>
                 <div className="max-h-80 overflow-y-auto">
                   {notifications.length === 0 ? (
-                    <p className="text-center text-slate-500 dark:text-slate-400 text-sm py-8">No notifications</p>
+                    <p className="text-center text-slate-500 dark:text-slate-400 text-sm py-8">{t('common.noNotifications')}</p>
                   ) : (
                     notifications.slice(0, 10).map((n) => (
                       <button
@@ -169,8 +183,8 @@ export default function Navbar() {
               onClick={() => setShowUserMenu(!showUserMenu)}
               className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
             >
-              {user?.avatar ? (
-                <img src={user.avatar} alt="" className="w-7 h-7 rounded-full object-cover border-2 border-primary/20" />
+              {(user?.profilePictureUrl || user?.avatar) ? (
+                <img src={user.profilePictureUrl || user.avatar} alt="" className="w-7 h-7 rounded-full object-cover border-2 border-primary/20" />
               ) : (
                 <div className="w-7 h-7 bg-primary rounded-full flex items-center justify-center text-white text-xs font-bold">
                   {initial}
@@ -192,7 +206,7 @@ export default function Navbar() {
                   onClick={() => setShowUserMenu(false)}
                 >
                   <User size={16} />
-                  My Profile
+                  {t('common.profile')}
                 </Link>
                 <Link
                   to="/settings"

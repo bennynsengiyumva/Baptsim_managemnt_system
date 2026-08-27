@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Edit, Trash2, Search, Users as UsersIcon, Building2, UserPlus, ChevronDown, ChevronRight, MapPin, X } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Users as UsersIcon, Building2, UserPlus, ChevronDown, ChevronRight, MapPin, X, UserCheck } from 'lucide-react';
 import {
   fetchUsers,
   deleteUser,
@@ -13,12 +13,14 @@ import {
 import DataTable from '@/components/ui/DataTable';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import EmptyState from '@/components/ui/EmptyState';
 import { User, Union, ChurchField } from '@/types';
 import { unionService } from '@/services/unionService';
 import { fieldService } from '@/services/fieldService';
 import { userService } from '@/services/userService';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
 
 const CREATABLE_ROLE: Record<string, string> = {
   ADMIN: 'HEAD_OF_RUM',
@@ -74,6 +76,8 @@ export default function UsersPage() {
   const [expandedField, setExpandedField] = useState<number | null>(null);
   const [fieldLeaders, setFieldLeaders] = useState<User[]>([]);
   const [leadersLoading, setLeadersLoading] = useState(false);
+
+  const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; variant: 'danger' | 'warning' }>({ isOpen: false, title: '', message: '', onConfirm: () => {}, variant: 'danger' });
 
   const creatableRole = currentUser?.role ? CREATABLE_ROLE[currentUser.role] : null;
 
@@ -162,12 +166,21 @@ export default function UsersPage() {
   };
 
   const handleDelete = async (userId: string) => {
-    const result = await dispatch(deleteUser(userId) as any);
-    if (deleteUser.fulfilled.match(result)) {
-      toast.success('User deleted');
-    } else {
-      toast.error('Failed to delete user');
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete User',
+      message: 'This action cannot be undone. Are you sure?',
+      variant: 'danger',
+      onConfirm: async () => {
+        const result = await dispatch(deleteUser(userId) as any);
+        if (deleteUser.fulfilled.match(result)) {
+          toast.success('User deleted');
+        } else {
+          toast.error('Failed to delete user');
+        }
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+      },
+    });
   };
 
   const columns = [
@@ -272,7 +285,13 @@ export default function UsersPage() {
           columns={columns}
           data={filteredUsers}
           isLoading={isLoading}
-          emptyMessage={t('common.noUsersFound')}
+          renderEmpty={
+            <EmptyState
+              icon={<UserCheck size={32} className="text-slate-300 dark:text-slate-600" />}
+              title={t('common.noUsersFound')}
+              message="No users match your search criteria."
+            />
+          }
         />
       </Card>
 
@@ -626,6 +645,7 @@ export default function UsersPage() {
         </div>
       )}
 
+      <ConfirmDialog isOpen={confirmDialog.isOpen} title={confirmDialog.title} message={confirmDialog.message} variant={confirmDialog.variant} onConfirm={confirmDialog.onConfirm} onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))} />
     </div>
   );
 }

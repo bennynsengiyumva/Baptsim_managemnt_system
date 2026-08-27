@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
+import { useDispatch } from 'react-redux';
 import {
   Bell, CheckCheck, Calendar, UserPlus, BookOpen,
   Droplets, FileText, Megaphone, AlertTriangle,
   ArrowLeft
 } from 'lucide-react';
 import { notificationService } from '@/services/notificationService';
+import { setUnreadCount } from '@/store/slices/notificationSlice';
 import { AppNotification } from '@/types';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
@@ -25,6 +27,7 @@ const iconMap: Record<string, JSX.Element> = {
 
 export default function NotificationsPage() {
   const { t } = useTranslation();
+  const dispatch = useDispatch();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -35,7 +38,11 @@ export default function NotificationsPage() {
   const loadNotifications = async () => {
     try {
       const data = await notificationService.getMyNotifications();
-      setNotifications(data);
+      // Sort by newest first as safety net
+      const sorted = [...data].sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      setNotifications(sorted);
     } catch {
       toast.error('Failed to load notifications');
     } finally {
@@ -49,6 +56,9 @@ export default function NotificationsPage() {
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, read: true } : n))
       );
+      // Update unread count in Redux
+      const count = await notificationService.getUnreadCount();
+      dispatch(setUnreadCount(typeof count === 'number' ? count : 0));
     } catch (err) {
       console.error('Failed to mark as read', err);
     }
@@ -58,6 +68,7 @@ export default function NotificationsPage() {
     try {
       await notificationService.markAllAsRead();
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      dispatch(setUnreadCount(0));
       toast.success('All notifications marked as read');
     } catch {
       toast.error('Failed to mark notifications');

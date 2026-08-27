@@ -30,7 +30,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:5173"));
+        config.setAllowedOrigins(List.of("http://localhost:5173", "http://localhost:5174"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
@@ -60,19 +60,33 @@ public class SecurityConfig {
                                 "/api/auth/reset-password",
                                 "/api/auth/verify-email",
                                 "/api/auth/resend-verification",
+                                "/api/auth/google",
                                 "/ws",
                                 "/ws/**",
-                                "/error"
+                                "/error",
+                                "/swagger-ui/**",
+                                "/v3/api-docs/**",
+                                "/swagger-ui.html"
                         ).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/churches", "/api/churches/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/files/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/system/health").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+
+                        // SYSTEM — admin only
+                        .requestMatchers("/api/system/**").hasRole("ADMIN")
+
+                        // SEARCH — authenticated
+                        .requestMatchers("/api/search/**").authenticated()
 
                         // AUTH REQUIRED
+                        .requestMatchers("/api/auth/create-user").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT", "PASTOR", "FIRST_CHURCH_ELDER")
                         .requestMatchers("/api/auth/**").authenticated()
 
                         // USERS — profile is personal, mutations are sensitive
                         .requestMatchers(HttpMethod.GET, "/api/users/profile").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/users/profile").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/users").hasAnyRole("ADMIN", "HEAD_OF_RUM")
+                        .requestMatchers(HttpMethod.POST, "/api/users").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT", "PASTOR", "FIRST_CHURCH_ELDER")
                         .requestMatchers(HttpMethod.PUT, "/api/users/*/role").hasAnyRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/users/*/status").hasAnyRole("ADMIN", "HEAD_OF_RUM")
                         .requestMatchers(HttpMethod.GET, "/api/users", "/api/users/**").authenticated()
@@ -96,6 +110,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/districts/**").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT")
                         .requestMatchers(HttpMethod.GET, "/api/districts", "/api/districts/**").authenticated()
 
+                        // DISTRICT ASSIGNMENTS
+                        .requestMatchers(HttpMethod.POST, "/api/district-assignments/**").hasAnyRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/district-assignments/**").hasAnyRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/district-assignments/**").hasAnyRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/district-assignments/**").authenticated()
+
                         // CHURCHES — creation and management
                         .requestMatchers(HttpMethod.POST, "/api/churches").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT")
                         .requestMatchers(HttpMethod.PUT, "/api/churches/*/assign-pastor").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT")
@@ -115,32 +135,69 @@ public class SecurityConfig {
                         .requestMatchers("/api/instructors/**").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT", "PASTOR", "FIRST_CHURCH_ELDER")
 
                         // CANDIDATES
+                        .requestMatchers(HttpMethod.GET, "/api/candidates/profile-pictures/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/candidates", "/api/candidates/**").authenticated()
+
+                        // SIGNATURES
+                        .requestMatchers("/api/signature/**").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/candidates/*/profile-picture").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/candidates/*/approve-ready").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT", "PASTOR", "FIRST_CHURCH_ELDER", "INSTRUCTOR")
+                        .requestMatchers(HttpMethod.PATCH, "/api/candidates/*/cms-transfer").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT", "PASTOR")
+                        .requestMatchers(HttpMethod.PUT, "/api/candidates/profile").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/candidates/course-language").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/candidates/course-language").authenticated()
                         .requestMatchers("/api/candidates/**").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT", "PASTOR", "FIRST_CHURCH_ELDER")
 
                         // BAPTISM
-                        .requestMatchers(HttpMethod.POST, "/api/baptisms/events").hasAnyRole("ADMIN", "PASTOR")
-                        .requestMatchers(HttpMethod.PUT, "/api/baptisms/events/**").hasAnyRole("ADMIN", "PASTOR")
-                        .requestMatchers(HttpMethod.POST, "/api/baptisms/register").hasAnyRole("CANDIDATE", "PASTOR", "ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/api/baptisms/approve").hasAnyRole("ADMIN", "PASTOR", "FIRST_CHURCH_ELDER", "INSTRUCTOR")
-                        .requestMatchers(HttpMethod.POST, "/api/baptisms/*/confirm").hasAnyRole("ADMIN", "PASTOR")
-                        .requestMatchers(HttpMethod.POST, "/api/baptisms/*/order").hasAnyRole("ADMIN", "PASTOR")
+                        .requestMatchers(HttpMethod.POST, "/api/baptisms/events").hasAnyRole("ADMIN", "PASTOR", "HEAD_OF_DISTRICT")
+                        .requestMatchers(HttpMethod.PUT, "/api/baptisms/events/**").hasAnyRole("ADMIN", "PASTOR", "HEAD_OF_DISTRICT")
+                        .requestMatchers(HttpMethod.POST, "/api/baptisms/register").hasAnyRole("CANDIDATE", "PASTOR", "ADMIN", "HEAD_OF_DISTRICT")
+                        .requestMatchers(HttpMethod.PUT, "/api/baptisms/approve").hasAnyRole("ADMIN", "PASTOR", "FIRST_CHURCH_ELDER", "INSTRUCTOR", "HEAD_OF_DISTRICT")
+                        .requestMatchers(HttpMethod.PUT, "/api/baptisms/reject").hasAnyRole("ADMIN", "PASTOR", "FIRST_CHURCH_ELDER", "INSTRUCTOR", "HEAD_OF_DISTRICT")
+                        .requestMatchers(HttpMethod.POST, "/api/baptisms/*/confirm").hasAnyRole("ADMIN", "PASTOR", "HEAD_OF_DISTRICT")
+                        .requestMatchers(HttpMethod.PUT, "/api/baptisms/*/order").hasAnyRole("ADMIN", "PASTOR", "HEAD_OF_DISTRICT")
+                        .requestMatchers(HttpMethod.PUT, "/api/baptisms/*/cms-transfer").hasAnyRole("ADMIN", "PASTOR", "HEAD_OF_DISTRICT")
                         .requestMatchers("/api/baptisms/export").hasAnyRole("ADMIN", "PASTOR", "HEAD_OF_DISTRICT", "HEAD_OF_FIELD", "HEAD_OF_RUM")
                         .requestMatchers(HttpMethod.GET, "/api/baptisms", "/api/baptisms/**").authenticated()
                         .requestMatchers("/api/baptisms/**").hasAnyRole("ADMIN", "PASTOR")
 
                         // CERTIFICATES
+                        .requestMatchers(HttpMethod.GET, "/api/certificates/verify/**").permitAll()
                         .requestMatchers(HttpMethod.PUT, "/api/certificates/*/sign").hasAnyRole("ADMIN", "PASTOR", "HEAD_OF_DISTRICT")
                         .requestMatchers(HttpMethod.GET, "/api/certificates/unsigned").hasAnyRole("ADMIN", "PASTOR", "HEAD_OF_DISTRICT")
                         .requestMatchers("/api/certificates/**").authenticated()
 
                         // LESSONS / COURSES
-                        .requestMatchers(HttpMethod.POST, "/api/lessons/**").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT", "PASTOR", "FIRST_CHURCH_ELDER", "INSTRUCTOR")
+                        .requestMatchers(HttpMethod.POST, "/api/lessons/create", "/api/lessons/*/update", "/api/lessons/*/delete").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT", "PASTOR", "FIRST_CHURCH_ELDER", "INSTRUCTOR")
+                        .requestMatchers(HttpMethod.POST, "/api/lessons/*/questions").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT", "PASTOR", "FIRST_CHURCH_ELDER", "INSTRUCTOR")
+                        .requestMatchers(HttpMethod.POST, "/api/lessons/*/documents").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT", "PASTOR", "FIRST_CHURCH_ELDER", "INSTRUCTOR")
+                        .requestMatchers(HttpMethod.POST, "/api/lessons/*/start-attempt", "/api/lessons/*/submit-attempt").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/lessons/*/start-lesson", "/api/lessons/*/content-complete").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/lessons", "/api/lessons/**").authenticated()
-                        .requestMatchers("/api/lessons/**").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT", "PASTOR", "FIRST_CHURCH_ELDER", "INSTRUCTOR")
+                        .requestMatchers(HttpMethod.DELETE, "/api/lessons/**").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT", "PASTOR", "FIRST_CHURCH_ELDER", "INSTRUCTOR")
+                        .requestMatchers(HttpMethod.PUT, "/api/lessons/**").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT", "PASTOR", "FIRST_CHURCH_ELDER", "INSTRUCTOR")
 
                         // MESSAGES
                         .requestMatchers("/api/messages/**").authenticated()
+
+                        // AI ASSISTANT
+                        .requestMatchers("/api/ai-assistant/**").authenticated()
+
+                        // SUPPORT REQUESTS
+                        .requestMatchers("/api/support-requests/**").authenticated()
+
+                        // COHORTS
+                        .requestMatchers(HttpMethod.POST, "/api/cohorts").hasAnyRole("INSTRUCTOR", "ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/cohorts/**").hasAnyRole("INSTRUCTOR", "ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/cohorts/**").hasAnyRole("INSTRUCTOR", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/cohorts", "/api/cohorts/**").authenticated()
+
+                        // FIELD ASSIGNMENTS
+                        .requestMatchers(HttpMethod.POST, "/api/field-assignments/**").hasAnyRole("ADMIN", "HEAD_OF_RUM")
+                        .requestMatchers(HttpMethod.GET, "/api/field-assignments", "/api/field-assignments/**").authenticated()
+
+                        // LEADERSHIP AUDIT LOGS
+                        .requestMatchers("/api/leadership-audit-logs/**").hasAnyRole("ADMIN", "HEAD_OF_RUM")
 
                         // NOTIFICATIONS
                         .requestMatchers(HttpMethod.GET, "/api/notifications/me/**").authenticated()
@@ -150,8 +207,11 @@ public class SecurityConfig {
                         // ANALYTICS
                         .requestMatchers(HttpMethod.GET, "/api/analytics", "/api/analytics/**").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT")
 
-                        // REPORTS
-                        .requestMatchers(HttpMethod.GET, "/api/reports", "/api/reports/**").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT")
+                        // ADMIN DASHBOARD
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
+                        // REPORTS (controller handles role-based access via @PreAuthorize)
+                        .requestMatchers(HttpMethod.GET, "/api/reports", "/api/reports/**").authenticated()
 
                         // PASTOR — view and assign candidates
                         .requestMatchers(HttpMethod.GET, "/api/pastor/**").hasAnyRole("ADMIN", "HEAD_OF_RUM", "HEAD_OF_FIELD", "HEAD_OF_DISTRICT", "PASTOR", "FIRST_CHURCH_ELDER", "INSTRUCTOR")

@@ -7,6 +7,8 @@ import com.church.baptism.dto.response.LessonGradeResponse;
 import com.church.baptism.dto.response.LessonResponse;
 import com.church.baptism.entity.biblestudy.BibleStudy;
 import com.church.baptism.entity.candidate.Candidate;
+import com.church.baptism.entity.cohort.Cohort;
+import com.church.baptism.entity.cohort.CohortMember;
 import com.church.baptism.entity.instructor.Instructor;
 import com.church.baptism.entity.lesson.Lesson;
 import com.church.baptism.entity.lesson.LessonAnswer;
@@ -17,6 +19,8 @@ import com.church.baptism.entity.notification.Notification.NotificationType;
 import com.church.baptism.entity.user.User;
 import com.church.baptism.repository.biblestudy.BibleStudyRepository;
 import com.church.baptism.repository.candidate.CandidateRepository;
+import com.church.baptism.repository.cohort.CohortMemberRepository;
+import com.church.baptism.repository.cohort.CohortRepository;
 import com.church.baptism.repository.instructor.InstructorRepository;
 import com.church.baptism.repository.lesson.LessonAnswerRepository;
 import com.church.baptism.repository.lesson.LessonAttemptRepository;
@@ -51,6 +55,8 @@ public class LessonService {
     private final NotificationService notificationService;
     private final UserRepository userRepository;
     private final BibleStudyRepository bibleStudyRepository;
+    private final CohortRepository cohortRepository;
+    private final CohortMemberRepository cohortMemberRepository;
 
     public LessonService(
             LessonRepository lessonRepository,
@@ -63,7 +69,9 @@ public class LessonService {
             LessonDocumentRepository documentRepository,
             NotificationService notificationService,
             UserRepository userRepository,
-            BibleStudyRepository bibleStudyRepository
+            BibleStudyRepository bibleStudyRepository,
+            CohortRepository cohortRepository,
+            CohortMemberRepository cohortMemberRepository
     ) {
         this.lessonRepository = lessonRepository;
         this.candidateRepository = candidateRepository;
@@ -76,25 +84,109 @@ public class LessonService {
         this.notificationService = notificationService;
         this.userRepository = userRepository;
         this.bibleStudyRepository = bibleStudyRepository;
+        this.cohortRepository = cohortRepository;
+        this.cohortMemberRepository = cohortMemberRepository;
     }
 
     // ================= CREATE LESSON =================
     @Transactional
     public LessonResponse createLesson(LessonRequest request, MultipartFile file) {
-        Candidate candidate = candidateRepository.findById(request.candidateId)
-                .orElseThrow(() -> new RuntimeException("Candidate not found"));
-
         Instructor instructor = instructorRepository.findById(request.instructorId)
                 .orElseThrow(() -> new RuntimeException("Instructor not found"));
-
-        // Validate instructor owns this candidate
-        if (candidate.getInstructor() == null || !candidate.getInstructor().getId().equals(instructor.getId())) {
-            throw new RuntimeException("Instructor does not have this candidate assigned");
-        }
 
         String fileUrl = null;
         if (file != null && !file.isEmpty()) {
             fileUrl = fileStorageService.uploadFile(file);
+        }
+
+        // Cohort-based: create lesson for all candidates in the cohort
+        if (request.cohortId != null) {
+            Cohort cohort = cohortRepository.findById(request.cohortId)
+                    .orElseThrow(() -> new RuntimeException("Cohort not found"));
+
+            // Validate instructor owns this cohort
+            if (cohort.getInstructor() == null || !cohort.getInstructor().getId().equals(instructor.getId())) {
+                throw new RuntimeException("Instructor does not own this cohort");
+            }
+
+            List<CohortMember> members = cohortMemberRepository.findByCohortIdAndStatus(
+                    request.cohortId, CohortMember.EnrollmentStatus.APPROVED);
+
+            if (members.isEmpty()) {
+                throw new RuntimeException("No approved members in this cohort");
+            }
+
+            Lesson firstLesson = null;
+            for (CohortMember member : members) {
+                Candidate candidate = member.getCandidate();
+
+                Lesson lesson = new Lesson();
+                lesson.setLessonTitle(request.lessonTitle);
+                lesson.setLessonDate(request.lessonDate);
+                lesson.setNotes(request.notes);
+                lesson.setDocumentUrl(fileUrl);
+                lesson.setRequiredScore(request.requiredScore);
+                lesson.setLessonOrder(request.lessonOrder);
+                lesson.setMaxAttempts(request.maxAttempts);
+                lesson.setObtainedScore(0);
+                lesson.setCompleted(false);
+                lesson.setCandidate(candidate);
+                lesson.setInstructor(instructor);
+                lesson.setCohort(cohort);
+                lesson.setCategory(request.category);
+                lesson.setDurationMinutes(request.durationMinutes);
+                lesson.setDescription(request.description);
+                lesson.setTitleRw(request.titleRw);
+                lesson.setNotesRw(request.notesRw);
+                lesson.setDescriptionRw(request.descriptionRw);
+
+                if (request.bibleStudyId != null) {
+                    BibleStudy bibleStudy = bibleStudyRepository.findById(request.bibleStudyId)
+                            .orElseThrow(() -> new RuntimeException("Bible study not found"));
+                    lesson.setBibleStudy(bibleStudy);
+                }
+
+                if (request.questions != null && !request.questions.isEmpty()) {
+                    List<LessonQuestion> questions = new ArrayList<>();
+                    for (int i = 0; i < request.questions.size(); i++) {
+                        LessonRequest.QuestionRequest qr = request.questions.get(i);
+                        LessonQuestion q = new LessonQuestion();
+                        q.setQuestion(qr.question);
+                        q.setCorrectAnswer(qr.correctAnswer);
+                        q.setOptions(qr.options);
+                        q.setOrderIndex(qr.orderIndex > 0 ? qr.orderIndex : i);
+                        q.setLesson(lesson);
+                        questions.add(q);
+                    }
+                    lesson.setQuestions(questions);
+                }
+
+                lessonRepository.save(lesson);
+                if (firstLesson == null) firstLesson = lesson;
+
+                // Notify candidate
+                userRepository.findByEmail(candidate.getEmail()).ifPresent(u ->
+                    notificationService.sendToUser(u.getId(),
+                        "New Lesson Available",
+                        "A new lesson \"" + lesson.getLessonTitle() + "\" has been assigned to you in cohort \"" + cohort.getCohortName() + "\".",
+                        NotificationType.NEW_LESSON)
+                );
+            }
+
+            return mapToResponse(firstLesson, true);
+        }
+
+        // Single candidate mode (backward compatible)
+        if (request.candidateId == null) {
+            throw new RuntimeException("Either candidateId or cohortId is required");
+        }
+
+        Candidate candidate = candidateRepository.findById(request.candidateId)
+                .orElseThrow(() -> new RuntimeException("Candidate not found"));
+
+        // Validate instructor owns this candidate
+        if (candidate.getInstructor() == null || !candidate.getInstructor().getId().equals(instructor.getId())) {
+            throw new RuntimeException("Instructor does not have this candidate assigned");
         }
 
         Lesson lesson = new Lesson();
@@ -109,6 +201,12 @@ public class LessonService {
         lesson.setCompleted(false);
         lesson.setCandidate(candidate);
         lesson.setInstructor(instructor);
+        lesson.setCategory(request.category);
+        lesson.setDurationMinutes(request.durationMinutes);
+        lesson.setDescription(request.description);
+        lesson.setTitleRw(request.titleRw);
+        lesson.setNotesRw(request.notesRw);
+        lesson.setDescriptionRw(request.descriptionRw);
 
         if (request.bibleStudyId != null) {
             BibleStudy bibleStudy = bibleStudyRepository.findById(request.bibleStudyId)
@@ -133,7 +231,6 @@ public class LessonService {
 
         lessonRepository.save(lesson);
 
-        // Notify candidate about new lesson
         userRepository.findByEmail(candidate.getEmail()).ifPresent(u ->
             notificationService.sendToUser(u.getId(),
                 "New Lesson Available",
@@ -142,6 +239,86 @@ public class LessonService {
         );
 
         return mapToResponse(lesson, true);
+    }
+
+    // ================= CREATE LESSONS FOR NEW COHORT MEMBER =================
+    @Transactional
+    public void createLessonsForNewMember(Long cohortId, Candidate candidate) {
+        // Find all lessons for this cohort
+        List<Lesson> cohortLessons = lessonRepository.findByCohortId(cohortId);
+        if (cohortLessons.isEmpty()) {
+            return;
+        }
+
+        // Check if this candidate already has lessons for this cohort
+        List<Lesson> existingLessons = lessonRepository.findByCohortIdAndCandidateId(cohortId, candidate.getId());
+        if (!existingLessons.isEmpty()) {
+            return; // Already has lessons
+        }
+
+        // Group lessons by lessonOrder to get unique lesson templates
+        // Each lessonOrder represents one unique lesson that was created for the cohort
+        Map<Integer, Lesson> uniqueLessons = new java.util.LinkedHashMap<>();
+        for (Lesson lesson : cohortLessons) {
+            uniqueLessons.putIfAbsent(lesson.getLessonOrder(), lesson);
+        }
+
+        Instructor instructor = cohortLessons.get(0).getInstructor();
+        Cohort cohort = cohortLessons.get(0).getCohort();
+
+        for (Map.Entry<Integer, Lesson> entry : uniqueLessons.entrySet()) {
+            Lesson template = entry.getValue();
+
+            Lesson lesson = new Lesson();
+            lesson.setLessonTitle(template.getLessonTitle());
+            lesson.setLessonDate(template.getLessonDate());
+            lesson.setNotes(template.getNotes());
+            lesson.setDocumentUrl(template.getDocumentUrl());
+            lesson.setRequiredScore(template.getRequiredScore());
+            lesson.setLessonOrder(template.getLessonOrder());
+            lesson.setMaxAttempts(template.getMaxAttempts());
+            lesson.setObtainedScore(0);
+            lesson.setCompleted(false);
+            lesson.setCandidate(candidate);
+            lesson.setInstructor(instructor);
+            lesson.setCohort(cohort);
+            lesson.setCategory(template.getCategory());
+            lesson.setDurationMinutes(template.getDurationMinutes());
+            lesson.setDescription(template.getDescription());
+            lesson.setTitleRw(template.getTitleRw());
+            lesson.setNotesRw(template.getNotesRw());
+            lesson.setDescriptionRw(template.getDescriptionRw());
+            lesson.setStatus(Lesson.LessonStatus.NOT_STARTED);
+
+            if (template.getBibleStudy() != null) {
+                lesson.setBibleStudy(template.getBibleStudy());
+            }
+
+            // Copy questions from template
+            if (template.getQuestions() != null && !template.getQuestions().isEmpty()) {
+                List<LessonQuestion> questions = new ArrayList<>();
+                for (LessonQuestion templateQ : template.getQuestions()) {
+                    LessonQuestion q = new LessonQuestion();
+                    q.setQuestion(templateQ.getQuestion());
+                    q.setCorrectAnswer(templateQ.getCorrectAnswer());
+                    q.setOptions(new ArrayList<>(templateQ.getOptions()));
+                    q.setOrderIndex(templateQ.getOrderIndex());
+                    q.setLesson(lesson);
+                    questions.add(q);
+                }
+                lesson.setQuestions(questions);
+            }
+
+            lessonRepository.save(lesson);
+        }
+
+        // Notify candidate
+        userRepository.findByEmail(candidate.getEmail()).ifPresent(u ->
+            notificationService.sendToUser(u.getId(),
+                "Courses Assigned",
+                "You have been assigned " + uniqueLessons.size() + " course(s) in cohort \"" + cohort.getCohortName() + "\".",
+                NotificationType.NEW_LESSON)
+        );
     }
 
     // ================= ADD QUESTIONS TO EXISTING LESSON =================
@@ -168,6 +345,7 @@ public class LessonService {
     }
 
     // ================= START ATTEMPT =================
+    @Transactional
     public LessonAttemptResponse startAttempt(Long lessonId, Long candidateId) {
         Lesson lesson = lessonRepository.findById(lessonId)
                 .orElseThrow(() -> new RuntimeException("Lesson not found"));
@@ -192,6 +370,14 @@ public class LessonService {
         // Check if already passed
         if (lesson.isCompleted()) {
             throw new RuntimeException("Lesson already completed");
+        }
+
+        // Auto-start lesson if not started
+        if (lesson.getStatus() == Lesson.LessonStatus.NOT_STARTED) {
+            lesson.setStatus(Lesson.LessonStatus.IN_PROGRESS);
+            lesson.setStartedAt(LocalDateTime.now());
+            lesson.setCompletionPercentage(10);
+            lessonRepository.save(lesson);
         }
 
         LessonAttempt attempt = new LessonAttempt();
@@ -223,6 +409,9 @@ public class LessonService {
 
         // Grade
         int totalQuestions = questionIds.size();
+        if (totalQuestions == 0) {
+            throw new RuntimeException("No questions to submit");
+        }
         int correctCount = 0;
 
         for (int i = 0; i < totalQuestions; i++) {
@@ -253,6 +442,9 @@ public class LessonService {
         if (passed) {
             lesson.setObtainedScore(score);
             lesson.setCompleted(true);
+            lesson.setStatus(Lesson.LessonStatus.COMPLETED);
+            lesson.setCompletedAt(LocalDateTime.now());
+            lesson.setCompletionPercentage(100);
             lessonRepository.save(lesson);
 
             // Notify candidate about lesson completion
@@ -293,23 +485,94 @@ public class LessonService {
                 .collect(Collectors.toList());
     }
 
+    // ================= START LESSON (Start Course) =================
+    @Transactional
+    public LessonResponse startLesson(Long lessonId, Long candidateId) {
+        Lesson lesson = lessonRepository.findById(lessonId)
+                .orElseThrow(() -> new RuntimeException("Lesson not found"));
+
+        Candidate candidate = candidateRepository.findById(candidateId)
+                .orElseThrow(() -> new RuntimeException("Candidate not found"));
+
+        if (lesson.getStatus() == Lesson.LessonStatus.COMPLETED) {
+            throw new RuntimeException("Lesson already completed");
+        }
+
+        // Sequential enforcement: check previous lesson is completed
+        if (lesson.getLessonOrder() > 1) {
+            List<Lesson> prevLessons = lessonRepository
+                    .findByCandidateIdAndCompleted(candidateId, true);
+            boolean prevCompleted = prevLessons.stream()
+                    .anyMatch(l -> l.getLessonOrder() == lesson.getLessonOrder() - 1);
+            if (!prevCompleted) {
+                throw new RuntimeException("Complete the previous lesson (Lesson " + (lesson.getLessonOrder() - 1) + ") before starting this one");
+            }
+        }
+
+        lesson.setStatus(Lesson.LessonStatus.IN_PROGRESS);
+        lesson.setStartedAt(LocalDateTime.now());
+        lesson.setCompletionPercentage(10);
+        lessonRepository.save(lesson);
+
+        return mapToResponse(lesson, false);
+    }
+
+    // ================= CONTENT COMPLETE =================
+    @Transactional
+    public LessonResponse contentComplete(Long lessonId, Long candidateId) {
+        Lesson lesson = lessonRepository.findById(lessonId)
+                .orElseThrow(() -> new RuntimeException("Lesson not found"));
+
+        if (lesson.getStatus() == Lesson.LessonStatus.COMPLETED) {
+            return mapToResponse(lesson, false);
+        }
+
+        // Sequential enforcement
+        if (lesson.getLessonOrder() > 1) {
+            List<Lesson> prevLessons = lessonRepository
+                    .findByCandidateIdAndCompleted(candidateId, true);
+            boolean prevCompleted = prevLessons.stream()
+                    .anyMatch(l -> l.getLessonOrder() == lesson.getLessonOrder() - 1);
+            if (!prevCompleted) {
+                throw new RuntimeException("Complete the previous lesson before continuing");
+            }
+        }
+
+        lesson.setStatus(Lesson.LessonStatus.IN_PROGRESS);
+        if (lesson.getStartedAt() == null) {
+            lesson.setStartedAt(LocalDateTime.now());
+        }
+        lesson.setCompletionPercentage(50);
+        lessonRepository.save(lesson);
+
+        return mapToResponse(lesson, false);
+    }
+
     // ================= GET LESSONS BY CANDIDATE =================
-    public List<LessonResponse> getLessonsByCandidate(Long candidateId) {
+    public List<LessonResponse> getLessonsByCandidate(Long candidateId, String language) {
         return lessonRepository.findByCandidateIdOrderByLessonOrderAsc(candidateId)
                 .stream()
-                .map(l -> mapToResponse(l, false))
+                .map(l -> mapToResponse(l, false, language))
                 .collect(Collectors.toList());
     }
 
+    public List<LessonResponse> getLessonsByCandidate(Long candidateId) {
+        return getLessonsByCandidate(candidateId, null);
+    }
+
     // ================= GET LESSON BY ID =================
-    public LessonResponse getLessonById(Long lessonId, boolean includeAnswers) {
+    public LessonResponse getLessonById(Long lessonId, boolean includeAnswers, String language) {
         Lesson lesson = lessonRepository.findById(lessonId)
                 .orElseThrow(() -> new RuntimeException("Lesson not found"));
-        return mapToResponse(lesson, includeAnswers);
+        return mapToResponse(lesson, includeAnswers, language);
+    }
+
+    public LessonResponse getLessonById(Long lessonId, boolean includeAnswers) {
+        return getLessonById(lessonId, includeAnswers, null);
     }
 
     public LessonResponse getLessonById(Long lessonId) {
-        return getLessonById(lessonId, false);
+        return getLessonById(lessonId, false, null);
     }
 
     // ================= GET ALL =================
@@ -328,6 +591,22 @@ public class LessonService {
         return (completed * 100.0) / lessons.size();
     }
 
+    // ================= PROGRESS DETAIL =================
+    public java.util.Map<String, Object> getProgressDetail(Long candidateId) {
+        List<Lesson> lessons = lessonRepository.findByCandidateId(candidateId);
+        int total = lessons.size();
+        int completed = (int) lessons.stream().filter(Lesson::isCompleted).count();
+        int remaining = total - completed;
+        double percentage = total == 0 ? 0 : (completed * 100.0) / total;
+
+        java.util.Map<String, Object> detail = new java.util.HashMap<>();
+        detail.put("totalLessons", total);
+        detail.put("completedLessons", completed);
+        detail.put("remainingLessons", remaining);
+        detail.put("progressPercentage", percentage);
+        return detail;
+    }
+
     // ================= UPDATE LESSON =================
     @Transactional
     public LessonResponse updateLesson(Long lessonId, LessonRequest request, MultipartFile file) {
@@ -340,6 +619,12 @@ public class LessonService {
         lesson.setRequiredScore(request.requiredScore);
         lesson.setLessonOrder(request.lessonOrder);
         lesson.setMaxAttempts(request.maxAttempts);
+        lesson.setCategory(request.category);
+        lesson.setDurationMinutes(request.durationMinutes);
+        lesson.setDescription(request.description);
+        lesson.setTitleRw(request.titleRw);
+        lesson.setNotesRw(request.notesRw);
+        lesson.setDescriptionRw(request.descriptionRw);
 
         if (file != null && !file.isEmpty()) {
             lesson.setDocumentUrl(fileStorageService.uploadFile(file));
@@ -398,7 +683,7 @@ public class LessonService {
         g.lessonTitle = lesson.getLessonTitle();
         g.candidateId = lesson.getCandidate().getId();
         g.candidateName = lesson.getCandidate().getFullName();
-        g.studentScore = lesson.getObtainedScore();
+        g.candidateScore = lesson.getObtainedScore();
         g.requiredScore = lesson.getRequiredScore();
         g.completed = lesson.isCompleted();
         g.attemptsUsed = attempts.size();
@@ -472,7 +757,7 @@ public class LessonService {
             g.lessonTitle = lesson.getLessonTitle();
             g.candidateId = candidateId;
             g.candidateName = lesson.getCandidate().getFullName();
-            g.studentScore = lesson.getObtainedScore();
+            g.candidateScore = lesson.getObtainedScore();
             g.requiredScore = lesson.getRequiredScore();
             g.completed = lesson.isCompleted();
             g.attemptsUsed = attempts.size();
@@ -498,13 +783,40 @@ public class LessonService {
         g.lessonTitle = lesson.getLessonTitle();
         g.candidateId = lesson.getCandidate().getId();
         g.candidateName = lesson.getCandidate().getFullName();
-        g.studentScore = lesson.getObtainedScore();
+        g.candidateScore = lesson.getObtainedScore();
         g.requiredScore = lesson.getRequiredScore();
         g.completed = lesson.isCompleted();
         g.attemptsUsed = attempts.size();
         g.bestScore = bestScore;
 
         return List.of(g);
+    }
+
+    public List<LessonGradeResponse> getGradebookByCandidate(Long candidateId) {
+        List<Lesson> lessons = lessonRepository.findByCandidateId(candidateId);
+
+        return lessons.stream().map(lesson -> {
+            Long cid = lesson.getCandidate().getId();
+            List<LessonAttempt> attempts = attemptRepository
+                    .findByLessonIdAndCandidateIdOrderByAttemptNumberAsc(lesson.getId(), cid);
+
+            int bestScore = attempts.stream()
+                    .mapToInt(LessonAttempt::getScore)
+                    .max()
+                    .orElse(0);
+
+            LessonGradeResponse g = new LessonGradeResponse();
+            g.lessonId = lesson.getId();
+            g.lessonTitle = lesson.getLessonTitle();
+            g.candidateId = cid;
+            g.candidateName = lesson.getCandidate().getFullName();
+            g.candidateScore = lesson.getObtainedScore();
+            g.requiredScore = lesson.getRequiredScore();
+            g.completed = lesson.isCompleted();
+            g.attemptsUsed = attempts.size();
+            g.bestScore = bestScore;
+            return g;
+        }).collect(Collectors.toList());
     }
 
     // ================= MAP TO RESPONSE =================
@@ -520,7 +832,7 @@ public class LessonService {
         r.uploadedAt = doc.getUploadedAt();
         return r;
     }
-    private LessonResponse mapToResponse(Lesson lesson, boolean includeAnswers) {
+    private LessonResponse mapToResponse(Lesson lesson, boolean includeAnswers, String language) {
         LessonResponse r = new LessonResponse();
         r.id = lesson.getId();
         r.lessonTitle = lesson.getLessonTitle();
@@ -534,10 +846,26 @@ public class LessonService {
         r.bibleStudyId = lesson.getBibleStudy() != null ? lesson.getBibleStudy().getId() : null;
         r.bibleStudyTitle = lesson.getBibleStudy() != null ? lesson.getBibleStudy().getTitle() : null;
         r.requiredScore = lesson.getRequiredScore();
-        r.studentScore = lesson.getObtainedScore();
+        r.candidateScore = lesson.getObtainedScore();
         r.lessonOrder = lesson.getLessonOrder();
         r.maxAttempts = lesson.getMaxAttempts();
         r.completed = lesson.isCompleted();
+        r.status = lesson.getStatus() != null ? lesson.getStatus().name() : "NOT_STARTED";
+        r.startedAt = lesson.getStartedAt();
+        r.completedAt = lesson.getCompletedAt();
+        r.completionPercentage = lesson.getCompletionPercentage();
+        r.category = lesson.getCategory();
+        r.durationMinutes = lesson.getDurationMinutes();
+        r.description = lesson.getDescription();
+        r.titleRw = lesson.getTitleRw();
+        r.notesRw = lesson.getNotesRw();
+        r.descriptionRw = lesson.getDescriptionRw();
+
+        // Resolve display fields based on language
+        boolean useRw = "rw".equals(language) && lesson.getTitleRw() != null && !lesson.getTitleRw().isEmpty();
+        r.displayTitle = useRw ? lesson.getTitleRw() : lesson.getLessonTitle();
+        r.displayNotes = useRw && lesson.getNotesRw() != null && !lesson.getNotesRw().isEmpty() ? lesson.getNotesRw() : lesson.getNotes();
+        r.displayDescription = useRw && lesson.getDescriptionRw() != null && !lesson.getDescriptionRw().isEmpty() ? lesson.getDescriptionRw() : lesson.getDescription();
 
         if (lesson.getQuestions() != null) {
             r.questions = lesson.getQuestions().stream()
@@ -554,6 +882,10 @@ public class LessonService {
         }
 
         return r;
+    }
+
+    private LessonResponse mapToResponse(Lesson lesson, boolean includeAnswers) {
+        return mapToResponse(lesson, includeAnswers, null);
     }
 
     private LessonAttemptResponse mapToAttemptResponse(LessonAttempt attempt, Lesson lesson) {

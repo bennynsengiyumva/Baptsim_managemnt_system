@@ -3,6 +3,8 @@ package com.church.baptism.service.notification;
 import com.church.baptism.dto.notification.NotificationMessage;
 import com.church.baptism.dto.request.NotificationRequest;
 import com.church.baptism.dto.response.NotificationResponse;
+import com.church.baptism.entity.church.ChurchField;
+import com.church.baptism.entity.church.District;
 import com.church.baptism.entity.notification.Notification;
 import com.church.baptism.entity.notification.Notification.NotificationType;
 import com.church.baptism.entity.user.User;
@@ -50,6 +52,36 @@ public class NotificationService {
         sendEmail(user, title, message);
         sendWebSocket(user, title, message, type);
         return map(n);
+    }
+
+    /**
+     * Send notification only to users in the same district/field.
+     * Email is only sent if the recipient's district/field matches the context.
+     * In-app notification and WebSocket are always sent regardless.
+     */
+    @Transactional
+    public NotificationResponse sendToUserInSameOrg(Long userId, District district, ChurchField field,
+                                                     String title, String message, NotificationType type) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        Notification n = save(user, title, message, type);
+        sendEmailInSameOrg(user, district, field, title, message);
+        sendWebSocket(user, title, message, type);
+        return map(n);
+    }
+
+    /**
+     * Send notification to multiple users, but only email those in the same district/field.
+     */
+    @Transactional
+    public void sendToMultipleUsersInSameOrg(List<Long> userIds, District district, ChurchField field,
+                                              String title, String message, NotificationType type) {
+        List<User> users = userRepository.findAllById(userIds);
+        for (User user : users) {
+            save(user, title, message, type);
+            sendEmailInSameOrg(user, district, field, title, message);
+            sendWebSocket(user, title, message, type);
+        }
     }
 
     @Transactional
@@ -110,6 +142,25 @@ public class NotificationService {
     private void sendEmail(User user, String title, String message) {
         if (user.getEmail() != null && !user.getEmail().isBlank()) {
             emailService.sendNotification(user.getEmail(), title, message);
+        }
+    }
+
+    private void sendEmailInSameOrg(User user, District district, ChurchField field, String title, String message) {
+        if (user.getEmail() == null || user.getEmail().isBlank()) {
+            return;
+        }
+        if (district == null && field == null) {
+            sendEmail(user, title, message);
+            return;
+        }
+        if (district != null && user.getDistrict() != null
+                && district.getId().equals(user.getDistrict().getId())) {
+            sendEmail(user, title, message);
+            return;
+        }
+        if (field != null && user.getField() != null
+                && field.getId().equals(user.getField().getId())) {
+            sendEmail(user, title, message);
         }
     }
 

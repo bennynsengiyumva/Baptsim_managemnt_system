@@ -1,6 +1,7 @@
 package com.church.baptism.dto.response;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public class LessonResponse {
@@ -16,10 +17,23 @@ public class LessonResponse {
     public Long bibleStudyId;
     public String bibleStudyTitle;
     public int requiredScore;
-    public int studentScore;
+    public int candidateScore;
     public int lessonOrder;
     public int maxAttempts;
     public boolean completed;
+    public String status;
+    public LocalDateTime startedAt;
+    public LocalDateTime completedAt;
+    public int completionPercentage;
+    public String category;
+    public Integer durationMinutes;
+    public String description;
+    public String titleRw;
+    public String notesRw;
+    public String descriptionRw;
+    public String displayTitle;
+    public String displayNotes;
+    public String displayDescription;
     public List<QuestionResponse> questions;
 
     public static class QuestionResponse {

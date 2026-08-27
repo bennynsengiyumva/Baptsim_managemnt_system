@@ -24,8 +24,8 @@ export const userService = {
   return response.data; // ✅ backend already returns List<User>
 },
 
-  // Create new user
-  createUser: async (user: Omit<User, 'id' | 'createdAt'>) => {
+  // Create new user (password is required for creation)
+  createUser: async (user: Omit<User, 'id' | 'createdAt'> & { password?: string }) => {
     const response = await apiClient.post<ApiResponse<User>>('/api/users', user);
     return response.data;
   },

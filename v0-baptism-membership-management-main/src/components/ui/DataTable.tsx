@@ -20,6 +20,7 @@ interface DataTableProps<T> {
     onPageChange: (page: number) => void;
   };
   emptyMessage?: string;
+  renderEmpty?: React.ReactNode;
 }
 
 export default function DataTable<T extends { id?: string | number }>({
@@ -29,6 +30,7 @@ export default function DataTable<T extends { id?: string | number }>({
   onRowClick,
   pagination,
   emptyMessage = 'No data available',
+  renderEmpty,
 }: DataTableProps<T>) {
   if (isLoading) {
     return (
@@ -39,7 +41,7 @@ export default function DataTable<T extends { id?: string | number }>({
   }
 
   if (data.length === 0) {
-    return <div className="text-center py-12 text-slate-500">{emptyMessage}</div>;
+    return renderEmpty ? <>{renderEmpty}</> : <div className="text-center py-12 text-slate-500">{emptyMessage}</div>;
   }
 
   return (

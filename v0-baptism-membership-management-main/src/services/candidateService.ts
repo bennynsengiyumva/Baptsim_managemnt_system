@@ -69,4 +69,14 @@ export const candidateService = {
     const response = await apiClient.get<CandidateDetail>(`/api/candidates/${candidateId}/detail`);
     return response.data;
   },
+
+  approveReady: async (candidateId: string) => {
+    const response = await apiClient.patch(`/api/candidates/${candidateId}/approve-ready`);
+    return response.data.data ?? response.data;
+  },
+
+  cmsTransfer: async (candidateId: string) => {
+    const response = await apiClient.patch(`/api/candidates/${candidateId}/cms-transfer`);
+    return response.data.data ?? response.data;
+  },
 };

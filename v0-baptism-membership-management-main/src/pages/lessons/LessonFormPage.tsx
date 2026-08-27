@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Plus, FileDown } from 'lucide-react';
 import { lessonService } from '@/services/lessonService';
-import { candidateService } from '@/services/candidateService';
+import { cohortService } from '@/services/cohortService';
 import { instructorService } from '@/services/instructorService';
+import { getFileUrl } from '@/services/api';
 import { selectUser } from '@/store/authStore';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import { LessonDocument } from '@/types';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
 
@@ -29,28 +30,36 @@ export default function LessonFormPage() {
   const [notes, setNotes] = useState('');
   const [requiredScore, setRequiredScore] = useState(70);
   const [lessonOrder, setLessonOrder] = useState(1);
-  const [candidateId, setCandidateId] = useState('');
-  const [file, setFile] = useState<File | null>(null);
+  const [cohorts, setCohorts] = useState<any[]>([]);
+  const [selectedCohortId, setSelectedCohortId] = useState<string>('');
+  const [files, setFiles] = useState<File[]>([]);
+  const [existingDocuments, setExistingDocuments] = useState<LessonDocument[]>([]);
   const [questions, setQuestions] = useState<QuestionForm[]>([]);
   const [loading, setLoading] = useState(false);
+  const [category, setCategory] = useState('');
+  const [durationMinutes, setDurationMinutes] = useState<number | ''>('');
+  const [description, setDescription] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [contentLanguage, setContentLanguage] = useState<'en' | 'rw'>('en');
+  const [titleRw, setTitleRw] = useState('');
+  const [notesRw, setNotesRw] = useState('');
+  const [descriptionRw, setDescriptionRw] = useState('');
 
-  const { data: instructors = [] } = useQuery({
-    queryKey: ['current-instructor'],
-    queryFn: async () => {
-      const res = await instructorService.getAllInstructors({ page: 1, pageSize: 100 });
+  const [instructorId, setInstructorId] = useState<number | null>(null);
+
+  useEffect(() => {
+    instructorService.getAllInstructors({ page: 1, pageSize: 100 }).then((res: any) => {
       const list = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
-      return list.find((i: any) => i.email === currentUser?.email);
-    },
-    enabled: !!currentUser,
-  });
-
-  const instructorId = (instructors as any)?.id;
-
-  const { data: candidates = [] } = useQuery({
-    queryKey: ['instructor-candidates', instructorId],
-    queryFn: () => candidateService.getCandidatesByInstructor(instructorId),
-    enabled: !!instructorId,
-  });
+      const me = list.find((i: any) => i.email === currentUser?.email);
+      if (me) {
+        setInstructorId(me.id);
+        cohortService.getAll().then((allCohorts: any) => {
+          const myCohorts = Array.isArray(allCohorts) ? allCohorts.filter((c: any) => c.instructorId === me.id) : [];
+          setCohorts(myCohorts);
+        }).catch(() => {});
+      }
+    }).catch(() => {});
+  }, [currentUser]);
 
   useEffect(() => {
     if (!isEditMode || !id) return;
@@ -62,7 +71,13 @@ export default function LessonFormPage() {
         setNotes(lesson.notes ?? '');
         setRequiredScore(lesson.requiredScore ?? 70);
         setLessonOrder(lesson.lessonOrder ?? 1);
-        setCandidateId(lesson.candidateId?.toString() ?? '');
+        setSelectedCohortId(lesson.cohortId ? String(lesson.cohortId) : '');
+        setCategory(lesson.category ?? '');
+        setDurationMinutes(lesson.durationMinutes ?? '');
+        setDescription(lesson.description ?? '');
+        setTitleRw(lesson.titleRw ?? '');
+        setNotesRw(lesson.notesRw ?? '');
+        setDescriptionRw(lesson.descriptionRw ?? '');
 
         if (lesson.questions && lesson.questions.length > 0) {
           const qs: QuestionForm[] = lesson.questions.map((q) => ({
@@ -72,6 +87,11 @@ export default function LessonFormPage() {
           }));
           setQuestions(qs);
         }
+
+        try {
+          const docs = await lessonService.getDocuments(id);
+          setExistingDocuments(Array.isArray(docs) ? docs : []);
+        } catch { /* no documents */ }
       } catch {
         toast.error('Failed to load lesson');
         navigate('/instructor/lessons');
@@ -80,6 +100,7 @@ export default function LessonFormPage() {
 
     fetchLesson();
   }, [id, isEditMode, navigate]);
+
 
   const handleQuestionChange = (qIdx: number, field: string, value: any) => {
     const updated = [...questions];
@@ -101,46 +122,69 @@ export default function LessonFormPage() {
     setQuestions(questions.filter((_, i) => i !== idx));
   };
 
+  const validate = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    if (!title.trim()) newErrors.title = 'Title is required';
+    else if (title.length > 200) newErrors.title = 'Title must be under 200 characters';
+    if (!selectedCohortId) newErrors.cohort = 'Select a cohort';
+    if (requiredScore < 0 || requiredScore > 100) newErrors.requiredScore = 'Score must be 0-100';
+    if (lessonOrder < 1) newErrors.lessonOrder = 'Order must be at least 1';
+    if (durationMinutes !== '' && (durationMinutes < 1 || durationMinutes > 600)) newErrors.duration = 'Duration must be 1-600 minutes';
+    if (description.length > 1000) newErrors.description = 'Description must be under 1000 characters';
+
+    const filledQuestions = questions.filter((q) => q.question.trim());
+    for (let i = 0; i < filledQuestions.length; i++) {
+      const q = filledQuestions[i];
+      if (!q.correctAnswer) newErrors[`question_${i}`] = `Question ${i + 1}: select a correct answer`;
+      if (q.options.some((o) => !o.trim())) newErrors[`question_${i}_options`] = `Question ${i + 1}: all options must be filled`;
+      if (!q.options.includes(q.correctAnswer)) newErrors[`question_${i}_match`] = `Question ${i + 1}: correct answer must be one of the options`;
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!title || !candidateId) {
-      toast.error('Title and candidate are required');
+    if (!validate()) {
+      toast.error('Please fix the validation errors');
       return;
     }
 
     const filledQuestions = questions.filter((q) => q.question.trim());
-    for (const q of filledQuestions) {
-      if (!q.correctAnswer || q.options.some((o) => !o.trim())) {
-        toast.error('Each filled question needs a correct answer and 4 options');
-        return;
-      }
-      if (!q.options.includes(q.correctAnswer)) {
-        toast.error('Correct answer must be one of the options');
-        return;
-      }
-    }
-
     setLoading(true);
 
     try {
-      const formData = new FormData();
-      formData.append('lessonTitle', title);
-      formData.append('lessonDate', new Date().toISOString().split('T')[0]);
-      formData.append('notes', notes);
-      formData.append('requiredScore', String(requiredScore));
-      formData.append('lessonOrder', String(lessonOrder));
-      formData.append('maxAttempts', '3');
-      formData.append('candidateId', candidateId);
-      formData.append('instructorId', String(instructorId));
-      if (file) {
-        formData.append('file', file);
-      }
-
-      const filledQuestions = questions.filter((q) => q.question.trim());
-
       if (isEditMode && id) {
+        const formData = new FormData();
+        formData.append('lessonTitle', title);
+        formData.append('lessonDate', new Date().toISOString().split('T')[0]);
+        formData.append('notes', notes);
+        formData.append('requiredScore', String(requiredScore));
+        formData.append('lessonOrder', String(lessonOrder));
+        formData.append('maxAttempts', '3');
+        formData.append('instructorId', String(instructorId));
+        formData.append('cohortId', selectedCohortId || '');
+        if (category)         formData.append('category', category);
+        if (durationMinutes !== '') formData.append('durationMinutes', String(durationMinutes));
+        if (description) formData.append('description', description);
+        if (titleRw) formData.append('titleRw', titleRw);
+        if (notesRw) formData.append('notesRw', notesRw);
+        if (descriptionRw) formData.append('descriptionRw', descriptionRw);
+        if (files.length > 0) {
+          formData.append('file', files[0]);
+        }
+
         await lessonService.updateLesson(id, formData);
+        // Upload additional files as documents
+        if (files.length > 1) {
+          for (let i = 1; i < files.length; i++) {
+            const docFormData = new FormData();
+            docFormData.append('file', files[i]);
+            await lessonService.uploadDocument(id, docFormData);
+          }
+        }
         if (filledQuestions.length > 0) {
           await lessonService.addQuestions(id, filledQuestions.map((q, i) => ({
             question: q.question,
@@ -151,7 +195,34 @@ export default function LessonFormPage() {
         }
         toast.success('Lesson updated successfully');
       } else {
+        const formData = new FormData();
+        formData.append('lessonTitle', title);
+        formData.append('lessonDate', new Date().toISOString().split('T')[0]);
+        formData.append('notes', notes);
+        formData.append('requiredScore', String(requiredScore));
+        formData.append('lessonOrder', String(lessonOrder));
+        formData.append('maxAttempts', '3');
+        formData.append('instructorId', String(instructorId));
+        formData.append('cohortId', selectedCohortId || '');
+        if (category) formData.append('category', category);
+        if (durationMinutes !== '') formData.append('durationMinutes', String(durationMinutes));
+        if (description) formData.append('description', description);
+        if (titleRw) formData.append('titleRw', titleRw);
+        if (notesRw) formData.append('notesRw', notesRw);
+        if (descriptionRw) formData.append('descriptionRw', descriptionRw);
+        if (files.length > 0) {
+          formData.append('file', files[0]);
+        }
+
         const created = await lessonService.create(formData);
+        // Upload additional files as documents
+        if (files.length > 1) {
+          for (let i = 1; i < files.length; i++) {
+            const docFormData = new FormData();
+            docFormData.append('file', files[i]);
+            await lessonService.uploadDocument(created.id, docFormData);
+          }
+        }
         if (filledQuestions.length > 0) {
           await lessonService.addQuestions(created.id, filledQuestions.map((q, i) => ({
             question: q.question,
@@ -171,6 +242,7 @@ export default function LessonFormPage() {
     }
   };
 
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
@@ -181,68 +253,198 @@ export default function LessonFormPage() {
         <Card title={t('common.lessonDetails')}>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">{t('common.title')}</label>
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full border rounded px-3 py-2"
-                required
-              />
+              <label className="block text-sm font-medium mb-1">{t('common.title')} * ({contentLanguage === 'en' ? 'English' : 'Kinyarwanda'})</label>
+              {contentLanguage === 'en' ? (
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className={`w-full border rounded px-3 py-2 ${errors.title ? 'border-red-500' : ''}`}
+                  required
+                />
+              ) : (
+                <input
+                  value={titleRw}
+                  onChange={(e) => setTitleRw(e.target.value)}
+                  placeholder="Umutwe w'isomo mu Kinyarwanda"
+                  className="w-full border rounded px-3 py-2"
+                />
+              )}
+              {errors.title && <p className="text-xs text-red-500 mt-1">{errors.title}</p>}
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">{t('common.candidate')}</label>
-              <select
-                value={candidateId}
-                onChange={(e) => setCandidateId(e.target.value)}
-                className="w-full border rounded px-3 py-2"
-                required
-              >
-                <option value="">{t('common.selectCandidate')}</option>
-                {(Array.isArray(candidates) ? candidates : []).map((c: any) => (
-                  <option key={c.id} value={c.id}>
-                    {c.fullName || `${c.firstName ?? ''} ${c.lastName ?? ''}`}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">{t('common.orderSequence')}</label>
+              <label className="block text-sm font-medium mb-1">{t('common.orderSequence')} *</label>
               <input
                 type="number"
                 min={1}
                 value={lessonOrder}
                 onChange={(e) => setLessonOrder(Number(e.target.value))}
-                className="w-full border rounded px-3 py-2"
+                className={`w-full border rounded px-3 py-2 ${errors.lessonOrder ? 'border-red-500' : ''}`}
               />
+              {errors.lessonOrder && <p className="text-xs text-red-500 mt-1">{errors.lessonOrder}</p>}
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">{t('common.passingScorePercent')}</label>
+              <label className="block text-sm font-medium mb-1">{t('common.passingScorePercent')} *</label>
               <input
                 type="number"
                 min={0}
                 max={100}
                 value={requiredScore}
                 onChange={(e) => setRequiredScore(Number(e.target.value))}
-                className="w-full border rounded px-3 py-2"
+                className={`w-full border rounded px-3 py-2 ${errors.requiredScore ? 'border-red-500' : ''}`}
               />
+              {errors.requiredScore && <p className="text-xs text-red-500 mt-1">{errors.requiredScore}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Category</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full border rounded px-3 py-2"
+              >
+                <option value="">Select category</option>
+                <option value="Bible Foundations">Bible Foundations</option>
+                <option value="Church Life">Church Life</option>
+                <option value="Doctrine">Doctrine</option>
+                <option value="Spiritual Growth">Spiritual Growth</option>
+                <option value="Service">Service</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Duration (minutes)</label>
+              <input
+                type="number"
+                min={1}
+                max={600}
+                value={durationMinutes}
+                onChange={(e) => setDurationMinutes(e.target.value ? Number(e.target.value) : '')}
+                placeholder="e.g. 30"
+                className={`w-full border rounded px-3 py-2 ${errors.duration ? 'border-red-500' : ''}`}
+              />
+              {errors.duration && <p className="text-xs text-red-500 mt-1">{errors.duration}</p>}
             </div>
           </div>
           <div className="mt-4">
+            <label className="block text-sm font-medium mb-1">Description ({contentLanguage === 'en' ? 'English' : 'Kinyarwanda'})</label>
+            {contentLanguage === 'en' ? (
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={2}
+                placeholder="Brief description of this lesson..."
+                className={`w-full border rounded px-3 py-2 ${errors.description ? 'border-red-500' : ''}`}
+              />
+            ) : (
+              <textarea
+                value={descriptionRw}
+                onChange={(e) => setDescriptionRw(e.target.value)}
+                rows={2}
+                placeholder="Ibisobanuro birambuye ku isomo..."
+                className="w-full border rounded px-3 py-2"
+              />
+            )}
+            {errors.description && <p className="text-xs text-red-500 mt-1">{errors.description}</p>}
+            <p className="text-xs text-slate-400 mt-1">{contentLanguage === 'en' ? description.length : descriptionRw.length}/1000</p>
+          </div>
+          <div className="mt-4">
             <label className="block text-sm font-medium mb-1">{t('common.notesContent')}</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={4}
-              className="w-full border rounded px-3 py-2"
-            />
+            {/* Language Tabs */}
+            <div className="flex gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => setContentLanguage('en')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${contentLanguage === 'en' ? 'bg-primary text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+              >
+                English
+              </button>
+              <button
+                type="button"
+                onClick={() => setContentLanguage('rw')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${contentLanguage === 'rw' ? 'bg-primary text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+              >
+                Kinyarwanda
+              </button>
+            </div>
+            {contentLanguage === 'en' ? (
+              <>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={4}
+                  placeholder="Lesson content in English..."
+                  className="w-full border rounded px-3 py-2"
+                />
+              </>
+            ) : (
+              <>
+                <textarea
+                  value={notesRw}
+                  onChange={(e) => setNotesRw(e.target.value)}
+                  rows={4}
+                  placeholder="Ibisobanuro by'isomo mu Kinyarwanda..."
+                  className="w-full border rounded px-3 py-2"
+                />
+              </>
+            )}
           </div>
           <div className="mt-4">
             <label className="block text-sm font-medium mb-1">{t('common.fileDocumentOptional')}</label>
             <input
               type="file"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              multiple
+              onChange={(e) => setFiles(Array.from(e.target.files || []))}
               className="w-full"
             />
+            {files.length > 0 && (
+              <div className="mt-2">
+                <p className="text-xs text-slate-500">Selected files:</p>
+                <ul className="text-sm text-slate-600">
+                  {files.map((f, idx) => (
+                    <li key={idx}>• {f.name}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {existingDocuments.length > 0 && (
+              <div className="mt-2 space-y-1">
+                <p className="text-xs text-slate-500">Existing files:</p>
+                {existingDocuments.map((doc) => (
+                  <div key={doc.id} className="flex items-center gap-2 text-sm">
+                    <FileDown size={14} className="text-indigo-500" />
+                    <a href={getFileUrl(doc.fileUrl)} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">
+                      {doc.fileName}
+                    </a>
+                    <span className="text-xs text-slate-400">({doc.fileType})</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* Cohort Selection */}
+        <Card title={isEditMode ? 'Cohort' : 'Assign to Cohort'}>
+          <p className="text-sm text-slate-500 mb-3">
+            Lesson will be created for all approved members in this cohort.
+          </p>
+          {errors.cohort && <p className="text-xs text-red-500 mb-2">{errors.cohort}</p>}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Select Cohort *
+            </label>
+            <select
+              value={selectedCohortId}
+              onChange={(e) => setSelectedCohortId(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+              required
+              disabled={isEditMode}
+            >
+              <option value="">Select a cohort</option>
+              {cohorts.map((c: any) => (
+                <option key={c.id} value={c.id}>{c.cohortName} ({c.memberCount || 0} members)</option>
+              ))}
+            </select>
+            <p className="text-xs text-slate-500 mt-1">Lesson will be created for all approved members in this cohort</p>
           </div>
         </Card>
 

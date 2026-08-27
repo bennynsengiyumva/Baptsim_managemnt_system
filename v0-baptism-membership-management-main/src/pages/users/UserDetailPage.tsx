@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import apiClient from '@/services/api';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
 
 export default function UserDetailPage() {
@@ -24,7 +25,7 @@ export default function UserDetailPage() {
   }, [error]);
 
   if (isLoading) {
-    return <div className="text-center py-12">{t('common.loading')}</div>;
+    return <LoadingSpinner fullPage />;
   }
 
   return (

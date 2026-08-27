@@ -31,7 +31,7 @@ export default function SettingsPage() {
     setLanguage(lang);
     i18n.changeLanguage(lang);
     localStorage.setItem('language', lang);
-    dispatch(setUILanguage(lang as 'en' | 'rw' | 'fr'));
+    dispatch(setUILanguage(lang as 'en' | 'rw'));
     toast.success(t('common.languageChanged'));
   };
 
@@ -97,7 +97,6 @@ export default function SettingsPage() {
               className="px-4 py-2 border border-gray-300 rounded-lg"
             >
               <option value="en">English</option>
-              <option value="fr">Français</option>
               <option value="rw">Kinyarwanda</option>
             </select>
           </div>

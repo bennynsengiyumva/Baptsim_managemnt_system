@@ -4,8 +4,11 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Users, BookOpen, GraduationCap, Bell, Calendar,
-  Award, Loader2, UserPlus, UserCheck, UserCog, X, RefreshCw
+  Award, Loader2, UserPlus, UserCheck, UserCog, X, RefreshCw, Layers
 } from 'lucide-react';
+import {
+  PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend
+} from 'recharts';
 import { selectUser } from '@/store/authStore';
 import { candidateService } from '@/services/candidateService';
 import { instructorService } from '@/services/instructorService';
@@ -25,6 +28,9 @@ export default function FirstChurchElderDashboard() {
   const [instructorList, setInstructorList] = useState<Instructor[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [cohortStats, setCohortStats] = useState<any>(null);
+  const [instructorCohorts, setInstructorCohorts] = useState<any[]>([]);
+  const [assignCohortId, setAssignCohortId] = useState('');
   const [loading, setLoading] = useState(true);
   const [showAssign, setShowAssign] = useState(false);
   const [assignCandidate, setAssignCandidate] = useState('');
@@ -53,6 +59,16 @@ export default function FirstChurchElderDashboard() {
       setInstructorList(insts);
       setUpcomingEvents(Array.isArray(eventsData) ? eventsData : []);
 
+      // Load cohort stats
+      const userChurchId = (user as any)?.churchId;
+      if (userChurchId) {
+        import('@/services/cohortService').then(({ cohortService }) => {
+          cohortService.getChurchStats(userChurchId).then((stats: any) => {
+            setCohortStats(stats);
+          }).catch(() => {});
+        });
+      }
+
       const notifsRaw = Array.isArray(notifData) ? notifData : (notifData as any)?.data || [];
       setNotifications(notifsRaw.map((n: any) => ({ ...n, read: n.read ?? n.isRead ?? false })).slice(0, 5));
     } catch { /* silent */ }
@@ -73,20 +89,46 @@ export default function FirstChurchElderDashboard() {
       toast.error('Select both a candidate and an instructor');
       return;
     }
+    if (!assignCohortId) {
+      toast.error('Please select a cohort for the candidate');
+      return;
+    }
     setAssigning(true);
     try {
-      await apiClient.patch(`/api/candidates/${assignCandidate}/assign-instructor/${assignInstructorId}`);
-      toast.success('Instructor assigned');
+      await apiClient.post('/api/cohorts/assign', {
+        candidateId: Number(assignCandidate),
+        instructorId: Number(assignInstructorId),
+        cohortId: Number(assignCohortId),
+      });
+      toast.success('Candidate assigned to instructor and cohort');
       setShowAssign(false);
       setAssignCandidate('');
       setAssignInstructorId('');
+      setAssignCohortId('');
       loadData();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to assign instructor');
+      toast.error(err.response?.data?.message || 'Failed to assign');
     } finally {
       setAssigning(false);
     }
   };
+
+  // Load cohorts when instructor is selected in assign modal
+  useEffect(() => {
+    if (assignInstructorId) {
+      import('@/services/cohortService').then(({ cohortService }) => {
+        cohortService.getByInstructor(Number(assignInstructorId)).then((cohorts: any) => {
+          const activeCohorts = Array.isArray(cohorts) ? cohorts.filter((c: any) => c.status === 'ACTIVE') : [];
+          setInstructorCohorts(activeCohorts);
+        }).catch(() => {
+          setInstructorCohorts([]);
+        });
+      });
+    } else {
+      setInstructorCohorts([]);
+      setAssignCohortId('');
+    }
+  }, [assignInstructorId]);
 
   const approveRegistration = async (eventId: string, candidateId: string) => {
     try {
@@ -125,7 +167,7 @@ export default function FirstChurchElderDashboard() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+        <div onClick={() => navigate('/candidates')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.totalCandidates')}</p>
@@ -136,7 +178,7 @@ export default function FirstChurchElderDashboard() {
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+        <div onClick={() => navigate('/instructors')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.instructors')}</p>
@@ -147,7 +189,7 @@ export default function FirstChurchElderDashboard() {
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+        <div onClick={() => navigate('/candidates')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.inProgress')}</p>
@@ -158,7 +200,7 @@ export default function FirstChurchElderDashboard() {
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+        <div onClick={() => navigate('/candidates')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.readyForBaptism')}</p>
@@ -170,6 +212,56 @@ export default function FirstChurchElderDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Cohort Stats */}
+      {cohortStats && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div onClick={() => navigate('/first-church-elders')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Assigned Candidates</p>
+                <p className="text-3xl font-bold mt-1 text-green-600 dark:text-green-400">{cohortStats.assignedCandidates}</p>
+              </div>
+              <div className="p-3 bg-green-50 dark:bg-green-900/30 rounded-xl">
+                <UserCheck size={24} className="text-green-600 dark:text-green-400" />
+              </div>
+            </div>
+          </div>
+          <div onClick={() => navigate('/first-church-elders')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Unassigned Candidates</p>
+                <p className="text-3xl font-bold mt-1 text-amber-600 dark:text-amber-400">{cohortStats.unassignedCandidates}</p>
+              </div>
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/30 rounded-xl">
+                <Users size={24} className="text-amber-600 dark:text-amber-400" />
+              </div>
+            </div>
+          </div>
+          <div onClick={() => navigate('/first-church-elders')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Active Cohorts</p>
+                <p className="text-3xl font-bold mt-1 text-indigo-600 dark:text-indigo-400">{cohortStats.activeCohorts}</p>
+              </div>
+              <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl">
+                <Layers size={24} className="text-indigo-600 dark:text-indigo-400" />
+              </div>
+            </div>
+          </div>
+          <div onClick={() => navigate('/first-church-elders')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Cohort Members</p>
+                <p className="text-3xl font-bold mt-1 text-blue-600 dark:text-blue-400">{cohortStats.totalMembers}</p>
+              </div>
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
+                <GraduationCap size={24} className="text-blue-600 dark:text-blue-400" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Progress Breakdown */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-6">
@@ -192,6 +284,37 @@ export default function FirstChurchElderDashboard() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Status Distribution PieChart */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Candidate Status Distribution</h3>
+        <ResponsiveContainer width="100%" height={280}>
+          <PieChart>
+            <Pie
+              data={[
+                { name: 'Registered', value: statusCounts.REGISTERED },
+                { name: 'In Progress', value: statusCounts.IN_PROGRESS },
+                { name: 'Ready for Baptism', value: statusCounts.READY_FOR_BAPTISM },
+                { name: 'Baptized', value: statusCounts.BAPTIZED },
+              ]}
+              cx="50%"
+              cy="50%"
+              innerRadius={60}
+              outerRadius={100}
+              paddingAngle={4}
+              dataKey="value"
+              label={({ name, value }) => value > 0 ? `${name}: ${value}` : ''}
+            >
+              <Cell fill="#94a3b8" />
+              <Cell fill="#f59e0b" />
+              <Cell fill="#8b5cf6" />
+              <Cell fill="#22c55e" />
+            </Pie>
+            <Tooltip />
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
       </div>
 
       {/* Quick Actions */}
@@ -330,10 +453,33 @@ export default function FirstChurchElderDashboard() {
                   ))}
                 </select>
               </div>
+              {assignInstructorId && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Assign to Cohort</label>
+                  {instructorCohorts.length > 0 ? (
+                    <select
+                      value={assignCohortId}
+                      onChange={(e) => setAssignCohortId(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                    >
+                      <option value="">Select a cohort</option>
+                      {instructorCohorts.map((c: any) => (
+                        <option key={c.id} value={c.id}>
+                          {c.cohortName} ({c.memberCount}/{c.capacity || '∞'} members)
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="w-full px-3 py-2 border border-amber-300 dark:border-amber-600 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 text-sm">
+                      No active cohorts for this instructor. Create a cohort first.
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={handleAssign}
-                  disabled={assigning || !assignCandidate || !assignInstructorId}
+                  disabled={assigning || !assignCandidate || !assignInstructorId || !assignCohortId}
                   className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
                 >
                   {assigning ? t('common.assigning') : t('common.assign')}

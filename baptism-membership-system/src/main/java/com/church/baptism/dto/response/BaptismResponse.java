@@ -23,4 +23,7 @@ public class BaptismResponse {
     public int baptismOrder;
     public List<String> photoUrls;
     public LocalDateTime confirmedAt;
+    public String requestStatus;
+    public LocalDateTime requestedAt;
+    public String profilePicturePath;
 }

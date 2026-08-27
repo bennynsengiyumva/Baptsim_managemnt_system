@@ -13,8 +13,14 @@ public interface UserRepository
     Optional<User> findByEmail(String email);
 
     boolean existsByEmail(String email);
-List<User> findByRole(Role role);
+    List<User> findByRole(Role role);
     long countByRole(Role role);
 
     List<User> findByFieldId(Long fieldId);
+
+    List<User> findFirstByUnionIdAndRole(Long unionId, Role role);
+
+    List<User> findFirstByFieldIdAndRole(Long fieldId, Role role);
+
+    List<User> findFirstByDistrictIdAndRole(Long districtId, Role role);
 }

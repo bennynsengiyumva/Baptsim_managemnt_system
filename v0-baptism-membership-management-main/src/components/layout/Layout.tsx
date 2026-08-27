@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 import { selectUser } from '@/store/authStore';
 import { useWebSocketNotifications } from '@/hooks/useNotifications';
 import NotificationPopup from '@/components/notifications/NotificationPopup';
+import SkipToContent from '@/components/accessibility/SkipToContent';
 import Sidebar from './Sidebar';
 import Navbar from './Navbar';
 import Footer from './Footer';
@@ -13,10 +14,11 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen bg-background">
+      <SkipToContent />
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Navbar />
-        <main className="flex-1 overflow-auto">
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto">
           <div className="p-6">
             <Outlet />
           </div>

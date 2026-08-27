@@ -2,9 +2,11 @@ package com.church.baptism.service.message;
 
 import com.church.baptism.dto.request.message.MessageRequest;
 import com.church.baptism.dto.response.message.MessageResponse;
+import com.church.baptism.entity.audit.MessageLog;
 import com.church.baptism.entity.message.Message;
 import com.church.baptism.entity.notification.Notification;
 import com.church.baptism.entity.user.User;
+import com.church.baptism.repository.audit.MessageLogRepository;
 import com.church.baptism.repository.message.MessageRepository;
 import com.church.baptism.repository.notification.NotificationRepository;
 import com.church.baptism.repository.user.UserRepository;
@@ -21,6 +23,7 @@ public class MessageService {
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
     private final NotificationRepository notificationRepository;
+    private final MessageLogRepository messageLogRepository;
 
     @Transactional
     public MessageResponse sendMessage(Long senderId, MessageRequest request) {
@@ -46,6 +49,22 @@ public class MessageService {
         notification.setRead(false);
         notificationRepository.save(notification);
 
+        // Log message
+        try {
+            MessageLog msgLog = new MessageLog();
+            msgLog.setSenderId(sender.getId());
+            msgLog.setSenderName(sender.getFullName());
+            msgLog.setReceiverId(receiver.getId());
+            msgLog.setReceiverName(receiver.getFullName());
+            msgLog.setAction("MESSAGE_SENT");
+            msgLog.setSubject(request.getSubject());
+            msgLog.setMessagePreview(request.getContent() != null && request.getContent().length() > 100
+                    ? request.getContent().substring(0, 100) + "..." : request.getContent());
+            msgLog.setConversationId(Math.min(sender.getId(), receiver.getId()) + "-" + Math.max(sender.getId(), receiver.getId()));
+            messageLogRepository.save(msgLog);
+        } catch (Exception ignored) {
+        }
+
         return toResponse(message);
     }
 
@@ -64,7 +83,7 @@ public class MessageService {
     }
 
     public List<MessageResponse> getConversation(Long userId1, Long userId2) {
-        return messageRepository.findBySenderIdAndReceiverIdOrderByCreatedAtAsc(userId1, userId2)
+        return messageRepository.findConversationBetween(userId1, userId2)
                 .stream()
                 .map(this::toResponse)
                 .toList();
@@ -76,6 +95,19 @@ public class MessageService {
                 .orElseThrow(() -> new RuntimeException("Message not found"));
         message.setRead(true);
         messageRepository.save(message);
+
+        try {
+            MessageLog msgLog = new MessageLog();
+            msgLog.setSenderId(message.getSender().getId());
+            msgLog.setSenderName(message.getSender().getFullName());
+            msgLog.setReceiverId(message.getReceiver().getId());
+            msgLog.setReceiverName(message.getReceiver().getFullName());
+            msgLog.setAction("MESSAGE_READ");
+            msgLog.setSubject(message.getSubject());
+            msgLog.setConversationId(Math.min(message.getSender().getId(), message.getReceiver().getId()) + "-" + Math.max(message.getSender().getId(), message.getReceiver().getId()));
+            messageLogRepository.save(msgLog);
+        } catch (Exception ignored) {
+        }
     }
 
     public long getUnreadCount(Long userId) {

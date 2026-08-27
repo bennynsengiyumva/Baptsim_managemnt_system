@@ -3,6 +3,7 @@ package com.church.baptism.entity.baptism;
 import com.church.baptism.entity.base.AuditableEntity;
 import jakarta.persistence.*;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -11,7 +12,12 @@ import java.util.List;
 public class BaptismEvent extends AuditableEntity {
 
     @Column(nullable = false)
+    private String eventName;
+
+    @Column(nullable = false)
     private LocalDate eventDate;
+
+    private LocalTime eventTime;
 
     @Column(nullable = false)
     private String location;
@@ -31,10 +37,14 @@ public class BaptismEvent extends AuditableEntity {
         PLANNED, CONFIRMED, COMPLETED, CANCELLED
     }
 
-
+    public String getEventName() { return eventName; }
+    public void setEventName(String eventName) { this.eventName = eventName; }
 
     public LocalDate getEventDate() { return eventDate; }
     public void setEventDate(LocalDate eventDate) { this.eventDate = eventDate; }
+
+    public LocalTime getEventTime() { return eventTime; }
+    public void setEventTime(LocalTime eventTime) { this.eventTime = eventTime; }
 
     public String getLocation() { return location; }
     public void setLocation(String location) { this.location = location; }

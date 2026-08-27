@@ -189,7 +189,7 @@ export default function HelpPage() {
     if (allMessages.length > 0) {
       buildConversations(allMessages);
     }
-  }, [userRoleMap]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [userRoleMap, allMessages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     pollingRef.current = setInterval(async () => {

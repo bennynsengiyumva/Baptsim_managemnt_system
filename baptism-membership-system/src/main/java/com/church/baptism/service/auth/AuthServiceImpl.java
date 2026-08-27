@@ -47,6 +47,7 @@ public class AuthServiceImpl implements AuthService {
     private final UnionRepository unionRepository;
     private final ChurchFieldRepository fieldRepository;
     private final DistrictRepository districtRepository;
+    private final com.church.baptism.repository.audit.AuthLogRepository authLogRepository;
 
     public AuthServiceImpl(
             UserRepository userRepository,
@@ -62,7 +63,8 @@ public class AuthServiceImpl implements AuthService {
             FirstChurchElderRepository firstChurchElderRepository,
             UnionRepository unionRepository,
             ChurchFieldRepository fieldRepository,
-            DistrictRepository districtRepository
+            DistrictRepository districtRepository,
+            com.church.baptism.repository.audit.AuthLogRepository authLogRepository
     ) {
         this.userRepository = userRepository;
         this.jwtService = jwtService;
@@ -78,6 +80,7 @@ public class AuthServiceImpl implements AuthService {
         this.unionRepository = unionRepository;
         this.fieldRepository = fieldRepository;
         this.districtRepository = districtRepository;
+        this.authLogRepository = authLogRepository;
     }
 
     @Override
@@ -132,8 +135,8 @@ public class AuthServiceImpl implements AuthService {
                 }
                 break;
             case HEAD_OF_DISTRICT:
-                if (request.role != Role.FIRST_CHURCH_ELDER) {
-                    throw new RuntimeException("Head of District can only create First Church Elder accounts");
+                if (request.role != Role.FIRST_CHURCH_ELDER && request.role != Role.INSTRUCTOR && request.role != Role.CANDIDATE) {
+                    throw new RuntimeException("Head of District can only create First Church Elder, Instructor, or Candidate accounts");
                 }
                 break;
             case PASTOR:
@@ -153,7 +156,9 @@ public class AuthServiceImpl implements AuthService {
         User user = new User();
         user.setFullName(request.fullName);
         user.setEmail(request.email);
-        user.setPhone(request.phone);
+        if (request.phone != null && !request.phone.isBlank()) {
+            user.setPhone(request.phone);
+        }
         user.setRole(request.role);
         user.setPassword(passwordEncoder.encode(request.password));
 
@@ -197,19 +202,35 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public AuthResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> {
+                    logAuth(null, request.email, null, null, "LOGIN_FAILED", "User not found", false);
+                    return new RuntimeException("User not found");
+                });
 
         if (!passwordEncoder.matches(request.password, user.getPassword())) {
+            logAuth(user.getId(), user.getEmail(), user.getFullName(), user.getRole().name(), "LOGIN_FAILED", "Invalid password", false);
             throw new RuntimeException("Invalid credentials");
         }
 
         if (user.isTwoFactorEnabled()) {
             twoFactorService.sendAndStoreCode(user);
+            logAuth(user.getId(), user.getEmail(), user.getFullName(), user.getRole().name(), "2FA_SENT", "2FA code sent", true);
             return new AuthResponse(user.getEmail(), true);
         }
 
         String token = jwtService.generateToken(user.getEmail(), user.getRole().name());
-        return new AuthResponse(token, user);
+        logAuth(user.getId(), user.getEmail(), user.getFullName(), user.getRole().name(), "LOGIN_SUCCESS", "Login successful", true);
+        AuthResponse authResponse = new AuthResponse(token, user);
+
+        // Return profile picture for candidates
+        if (user.getRole() == Role.CANDIDATE) {
+            candidateRepository.findByEmail(user.getEmail()).stream().findFirst().ifPresent(c -> {
+                authResponse.profilePictureUrl = c.getProfilePicturePath();
+            });
+        }
+
+        // Note: roleChangeMessage is NOT cleared - it shows every login until admin removes it
+        return authResponse;
     }
 
     @Override
@@ -218,13 +239,18 @@ public class AuthServiceImpl implements AuthService {
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         if (!twoFactorService.verifyCode(user, request.code)) {
+            logAuth(user.getId(), user.getEmail(), user.getFullName(), user.getRole().name(), "OTP_FAILED", "OTP verification failed", false);
             throw new RuntimeException("Invalid or expired 2FA code");
         }
 
         twoFactorService.clearCode(user);
+        logAuth(user.getId(), user.getEmail(), user.getFullName(), user.getRole().name(), "OTP_VERIFIED", "OTP verified successfully", true);
 
         String token = jwtService.generateToken(user.getEmail(), user.getRole().name());
-        return new AuthResponse(token, user);
+        AuthResponse authResponse = new AuthResponse(token, user);
+
+        // Note: roleChangeMessage is NOT cleared - it shows every login until admin removes it
+        return authResponse;
     }
 
     @Override
@@ -370,11 +396,88 @@ public class AuthServiceImpl implements AuthService {
         emailService.sendEmailVerification(user.getEmail(), newToken);
     }
 
+    // ================= GOOGLE OAUTH =================
+
+    @Override
+    public AuthResponse googleLogin(String idToken) {
+        try {
+            // Verify the Google ID token by fetching user info from Google's tokeninfo endpoint
+            java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("https://oauth2.googleapis.com/tokeninfo?id_token=" + idToken))
+                    .GET()
+                    .build();
+            java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() != 200) {
+                throw new RuntimeException("Invalid Google token");
+            }
+
+            com.google.gson.JsonObject json = com.google.gson.JsonParser.parseString(response.body()).getAsJsonObject();
+            String email = json.get("email").getAsString();
+            String fullName = json.has("name") ? json.get("name").getAsString() : email.split("@")[0];
+            String picture = json.has("picture") ? json.get("picture").getAsString() : null;
+
+            // Find or create user
+            User user = userRepository.findByEmail(email).orElse(null);
+
+            if (user == null) {
+                // Create new user from Google account
+                user = new User();
+                user.setEmail(email);
+                user.setFullName(fullName);
+                user.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
+                user.setRole(Role.CANDIDATE);
+                user.setEnabled(true);
+                user.setEmailVerified(true);
+                userRepository.save(user);
+
+                // Create candidate profile
+                createCandidateProfileFromGoogle(email, fullName);
+
+                logAuth(user.getId(), email, fullName, "CANDIDATE", "GOOGLE_REGISTER", "New account via Google OAuth", true);
+            } else {
+                logAuth(user.getId(), email, fullName, user.getRole().name(), "GOOGLE_LOGIN", "Google OAuth login", true);
+            }
+
+            String token = jwtService.generateToken(user.getEmail(), user.getRole().name());
+
+            // Build candidate info
+            java.util.Map<String, Object> candidateInfo = null;
+            java.util.List<Candidate> candidates = candidateRepository.findByEmail(email);
+            if (!candidates.isEmpty()) {
+                Candidate candidate = candidates.get(0);
+                candidateInfo = java.util.Map.of(
+                        "candidateId", candidate.getId(),
+                        "status", candidate.getStatus().name()
+                );
+            }
+
+            AuthResponse authResponse = new AuthResponse(token, user);
+            authResponse.profilePictureUrl = picture;
+            return authResponse;
+
+        } catch (Exception e) {
+            logAuth(null, "unknown", "unknown", null, "GOOGLE_LOGIN_FAILED", e.getMessage(), false);
+            throw new RuntimeException("Google authentication failed: " + e.getMessage());
+        }
+    }
+
+    private void createCandidateProfileFromGoogle(String email, String fullName) {
+        Candidate candidate = new Candidate();
+        candidate.setFullName(fullName);
+        candidate.setEmail(email);
+        candidate.setStatus(Candidate.CandidateStatus.REGISTERED);
+        candidate.setCreatedAt(LocalDateTime.now());
+        candidateRepository.save(candidate);
+    }
+
     // ================= HELPERS =================
 
     private void createCandidateProfile(RegisterRequest request) {
         Candidate candidate = new Candidate();
         candidate.setFullName(request.fullName);
+        candidate.setEmail(request.email);
         candidate.setPhone(request.phone);
         candidate.setDateOfBirth(request.dateOfBirth);
         candidate.setGender(request.gender);
@@ -427,5 +530,20 @@ public class AuthServiceImpl implements AuthService {
         }
 
         firstChurchElderRepository.save(elder);
+    }
+
+    private void logAuth(Long userId, String email, String userName, String role, String action, String details, boolean success) {
+        try {
+            com.church.baptism.entity.audit.AuthLog log = new com.church.baptism.entity.audit.AuthLog();
+            log.setUserId(userId);
+            log.setUserEmail(email);
+            log.setUserName(userName);
+            log.setRole(role);
+            log.setAction(action);
+            log.setDetails(details);
+            log.setSuccess(success);
+            authLogRepository.save(log);
+        } catch (Exception ignored) {
+        }
     }
 }

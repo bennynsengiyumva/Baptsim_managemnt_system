@@ -5,7 +5,7 @@ public class LessonGradeResponse {
     public String lessonTitle;
     public Long candidateId;
     public String candidateName;
-    public int studentScore;
+    public int candidateScore;
     public int requiredScore;
     public boolean completed;
     public int attemptsUsed;

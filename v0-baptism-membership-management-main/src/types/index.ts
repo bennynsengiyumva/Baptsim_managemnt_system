@@ -6,6 +6,7 @@ export interface User {
   role: UserRole;
   phone?: string;
   avatar?: string;
+  profilePictureUrl?: string;
   createdAt: string;
   twoFactorEnabled?: boolean;
   emailVerified?: boolean;
@@ -17,6 +18,11 @@ export interface User {
   fieldId?: number;
   districtId?: number;
   churchId?: number;
+  preferredLanguage?: string;
+  gender?: string;
+  dateOfBirth?: string;
+  address?: string;
+  emergencyContact?: string;
 }
 
 export type UserRole = 'ADMIN' | 'HEAD_OF_RUM' | 'HEAD_OF_FIELD' | 'HEAD_OF_DISTRICT' | 'PASTOR' | 'FIRST_CHURCH_ELDER' | 'INSTRUCTOR' | 'CANDIDATE';
@@ -26,10 +32,15 @@ export type CandidateStatus =
   | 'REGISTERED'
   | 'IN_PROGRESS'
   | 'READY_FOR_BAPTISM'
+  | 'BAPTISM_REQUEST_PENDING'
+  | 'APPROVED_FOR_BAPTISM'
   | 'BAPTIZED'
+  | 'CERTIFICATE_GENERATED'
+  | 'CERTIFICATE_SIGNED'
+  | 'COURSE_COMPLETED'
+  | 'TRANSFERRED_TO_CMS'
   | 'ACTIVE'
   | 'INACTIVE'
-  | 'TRANSFERRED'
   | 'SUSPENDED';
 
 export interface Candidate {
@@ -54,12 +65,26 @@ export interface Candidate {
   instructorName?: string;
   instructorEmail?: string;
   instructorPhone?: string;
+  instructorApproved?: boolean;
+  profilePicturePath?: string;
 }
 
 export interface CandidateDashboardData {
+  candidateId: number;
+  candidateName: string;
   totalLessons: number;
   completedLessons: number;
-  progress: number;
+  lessonProgress: number;
+  totalSpiritualActivities: number;
+  readyActivities: number;
+  spiritualProgress: number;
+  readyForBaptism: boolean;
+  baptized: boolean;
+  approved: boolean;
+  overallReadiness: number;
+  statusMessage: string;
+  // Legacy fields
+  progress?: number;
 }
 
 // Bible Study Types
@@ -108,11 +133,25 @@ export interface Lesson {
   instructorName: string;
   instructorId: string;
   requiredScore: number;
-  studentScore: number;
+  candidateScore: number;
   lessonOrder: number;
   maxAttempts: number;
   completed: boolean;
+  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
+  startedAt?: string;
+  completedAt?: string;
+  completionPercentage: number;
   questions: LessonQuestion[];
+  category?: string;
+  durationMinutes?: number;
+  description?: string;
+  titleRw?: string;
+  notesRw?: string;
+  descriptionRw?: string;
+  displayTitle?: string;
+  displayNotes?: string;
+  displayDescription?: string;
+  cohortId?: number;
 }
 
 export interface LessonQuestion {
@@ -134,6 +173,7 @@ export interface LessonAttempt {
   attemptsRemaining: number;
   startedAt: string;
   completedAt: string;
+  answers?: { questionId: string; selectedAnswer: string }[];
 }
 
 export interface LessonDocument {
@@ -151,7 +191,7 @@ export interface LessonGrade {
   lessonTitle: string;
   candidateId: string;
   candidateName: string;
-  studentScore: number;
+  candidateScore: number;
   requiredScore: number;
   completed: boolean;
   attemptsUsed: number;
@@ -186,14 +226,20 @@ export interface CandidateDetail {
 // Baptism Types
 export interface BaptismEvent {
   id: string;
+  eventName: string;
   eventDate: string;
+  eventTime?: string;
   location: string;
   officiatingPastor: string;
   description?: string;
   status: 'PLANNED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
   registeredCount: number;
+  approvedCount: number;
+  pendingCount: number;
+  rejectedCount: number;
   baptizedCount: number;
   registrations: BaptismRegistration[];
+  createdAt?: string;
 }
 
 export interface BaptismRegistration {
@@ -215,6 +261,8 @@ export interface BaptismRegistration {
   baptismOrder: number;
   photoUrls?: string[];
   confirmedAt?: string;
+  requestStatus?: string;
+  requestedAt?: string;
 }
 
 // Membership Types
@@ -369,6 +417,10 @@ export interface Union {
   phone?: string;
   email?: string;
   active?: boolean;
+  headUserId?: number;
+  headUserName?: string;
+  headUserEmail?: string;
+  headUserPhone?: string;
 }
 
 export interface ChurchField {
@@ -381,6 +433,10 @@ export interface ChurchField {
   active?: boolean;
   unionId: number;
   unionName?: string;
+  headUserId?: number;
+  headUserName?: string;
+  headUserEmail?: string;
+  headUserPhone?: string;
 }
 
 export interface District {
@@ -393,6 +449,10 @@ export interface District {
   active?: boolean;
   fieldId: number;
   fieldName?: string;
+  headUserId?: number;
+  headUserName?: string;
+  headUserEmail?: string;
+  headUserPhone?: string;
 }
 
 export interface Church {
@@ -527,4 +587,74 @@ export interface FilterParams {
   sortOrder?: 'ASC' | 'DESC';
   status?: string;
   [key: string]: any;
+}
+
+export interface AiChatMessage {
+  id: number;
+  role: 'user' | 'assistant';
+  content: string;
+  satisfied?: boolean | null;
+  escalated?: boolean;
+  createdAt: string;
+}
+
+export interface AiChat {
+  id: number;
+  title: string;
+  status: string;
+  messageCount: number;
+  createdAt: string;
+  messages: AiChatMessage[];
+}
+
+export interface HumanSupportMessage {
+  id: number;
+  candidateId: number;
+  candidateName: string;
+  recipientName: string;
+  recipientRole: string;
+  subject: string;
+  message: string;
+  status: 'WAITING_FOR_RESPONSE' | 'RESPONDED' | 'CLOSED';
+  createdAt: string;
+  readByRecipient: boolean;
+  readByCandidate: boolean;
+  isReply: boolean;
+  parentId: number | null;
+  replies?: HumanSupportMessage[];
+  senderName?: string;
+}
+
+// Cohort Types
+export interface Cohort {
+  id: number;
+  cohortName: string;
+  cohortCode: string;
+  description?: string;
+  language?: string;
+  startDate?: string;
+  endDate?: string;
+  capacity?: number;
+  status: 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED' | 'CANCELLED';
+  churchId?: number;
+  churchName?: string;
+  instructorId?: number;
+  instructorName?: string;
+  memberCount: number;
+  approvedCount: number;
+  members?: CohortMember[];
+}
+
+export interface CohortMember {
+  id: number;
+  candidateId: number;
+  candidateName: string;
+  candidateEmail: string;
+  candidateStatus: string;
+  enrollmentStatus: 'ENROLLED' | 'APPROVED' | 'COMPLETED' | 'WITHDRAWN';
+  enrolledAt: string;
+  approvedAt?: string;
+  completedLessons: number;
+  totalLessons: number;
+  progressPercentage: number;
 }

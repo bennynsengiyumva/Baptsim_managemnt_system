@@ -1,17 +1,20 @@
 package com.church.baptism.dto.response;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 public class CandidateResponse {
 
     private Long id;
     private String fullName;
-    private String email;       // ✅ was missing
-    private String phone;       // ✅ was missing
-    private String gender;      // ✅ was missing
-    private String address;     // ✅ was missing
+    private String email;
+    private String phone;
+    private String gender;
+    private String address;
     private LocalDate dateOfBirth;
     private String status;
+    private boolean instructorApproved;
+    private LocalDateTime createdAt;
 
     // Church — ✅ were missing
     private Long churchId;
@@ -22,6 +25,8 @@ public class CandidateResponse {
     private String instructorName;
     private String instructorEmail;
     private String instructorPhone;
+
+    private String profilePicturePath;
 
     public CandidateResponse() {}
 
@@ -49,6 +54,9 @@ public class CandidateResponse {
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
 
+    public boolean isInstructorApproved() { return instructorApproved; }
+    public void setInstructorApproved(boolean instructorApproved) { this.instructorApproved = instructorApproved; }
+
     public Long getChurchId() { return churchId; }
     public void setChurchId(Long churchId) { this.churchId = churchId; }
 
@@ -66,4 +74,10 @@ public class CandidateResponse {
 
     public String getInstructorPhone() { return instructorPhone; }
     public void setInstructorPhone(String instructorPhone) { this.instructorPhone = instructorPhone; }
+
+    public String getProfilePicturePath() { return profilePicturePath; }
+    public void setProfilePicturePath(String profilePicturePath) { this.profilePicturePath = profilePicturePath; }
+
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }

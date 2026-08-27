@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { Plus, Edit, Trash2, Building2, X, UserPlus } from 'lucide-react';
+import { Plus, Edit, Trash2, Building2, X, UserPlus, User, ArrowRight, Search } from 'lucide-react';
 import { selectUser, selectIsHeadOfRum } from '@/store/authStore';
 import { unionService } from '@/services/unionService';
+import { userService } from '@/services/userService';
 import { Union } from '@/types';
 import DataTable from '@/components/ui/DataTable';
 import Card from '@/components/ui/Card';
@@ -22,6 +23,15 @@ export default function UnionPage() {
   const [form, setForm] = useState({ name: '', code: '', address: '', phone: '', email: '' });
   const [createHead, setCreateHead] = useState(false);
   const [headForm, setHeadForm] = useState({ fullName: '', email: '', phone: '', password: '' });
+
+  // Leadership modals
+  const [showAssignHead, setShowAssignHead] = useState(false);
+  const [showReplaceHead, setShowReplaceHead] = useState(false);
+  const [selectedUnion, setSelectedUnion] = useState<Union | null>(null);
+  const [assignForm, setAssignForm] = useState({ fullName: '', email: '', phone: '', password: '' });
+  const [replaceUserId, setReplaceUserId] = useState<number>(0);
+  const [users, setUsers] = useState<any[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -79,9 +89,70 @@ export default function UnionPage() {
     } catch { toast.error('Failed to delete union'); }
   };
 
+  // Leadership handlers
+  const openAssignHead = (union: Union) => {
+    setSelectedUnion(union);
+    setAssignForm({ fullName: '', email: '', phone: '', password: '' });
+    setShowAssignHead(true);
+  };
+
+  const openReplaceHead = async (union: Union) => {
+    setSelectedUnion(union);
+    setReplaceUserId(0);
+    setUsersLoading(true);
+    setShowReplaceHead(true);
+    try {
+      const res = await userService.getAllUsers({ pageSize: 1000 });
+      const allUsers: any[] = Array.isArray(res) ? res : (res as any)?.data ?? [];
+      setUsers(allUsers.filter((u: any) => u.role === 'HEAD_OF_RUM'));
+    } catch {
+      toast.error('Failed to load users');
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  const handleAssignHead = async () => {
+    if (!selectedUnion || !assignForm.fullName || !assignForm.email || !assignForm.password) {
+      toast.error('Name, email and password are required');
+      return;
+    }
+    try {
+      await unionService.assignHead(selectedUnion.id, assignForm);
+      toast.success('Head of RUM assigned successfully');
+      setShowAssignHead(false);
+      load();
+    } catch { toast.error('Failed to assign head'); }
+  };
+
+  const handleReplaceHead = async () => {
+    if (!selectedUnion || !replaceUserId) {
+      toast.error('Please select a user');
+      return;
+    }
+    try {
+      await unionService.replaceHead(selectedUnion.id, replaceUserId);
+      toast.success('Head of RUM replaced successfully');
+      setShowReplaceHead(false);
+      load();
+    } catch { toast.error('Failed to replace head'); }
+  };
+
   const columns = [
     { key: 'name', label: t('common.name') },
     { key: 'code', label: t('common.code'), render: (v: any) => v || '—' },
+    { key: 'headUserName', label: 'Head of RUM', render: (v: any, record: Union) => {
+      if (v) return (
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">{v.charAt(0)}</div>
+          <div>
+            <p className="text-sm font-medium">{v}</p>
+            <p className="text-xs text-gray-400">{record.headUserEmail}</p>
+          </div>
+        </div>
+      );
+      return <span className="text-amber-600 text-sm font-medium">No leader</span>;
+    }},
     { key: 'phone', label: t('common.phone'), render: (v: any) => v || '—' },
     { key: 'email', label: t('common.email'), render: (v: any) => v || '—' },
     {
@@ -110,6 +181,52 @@ export default function UnionPage() {
         <DataTable columns={columns} data={unions} isLoading={loading} emptyMessage={t('common.noUnionsFound')} />
       </Card>
 
+      {/* Leadership Section */}
+      {canEdit && unions.length > 0 && (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-6">
+          <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
+            <User size={18} className="text-primary" /> Leadership
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {unions.map(union => (
+              <div key={union.id} className="border border-gray-200 dark:border-slate-700 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-gray-900 dark:text-white text-sm">{union.name}</h3>
+                  {union.headUserId ? (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Active</span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Vacant</span>
+                  )}
+                </div>
+                {union.headUserId ? (
+                  <div className="space-y-1 mb-3">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{union.headUserName}</p>
+                    <p className="text-xs text-gray-500">{union.headUserEmail}</p>
+                    {union.headUserPhone && <p className="text-xs text-gray-500">{union.headUserPhone}</p>}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 mb-3 italic">No leader assigned</p>
+                )}
+                <div className="flex gap-2">
+                  {!union.headUserId ? (
+                    <Button variant="primary" onClick={() => openAssignHead(union)} className="text-xs px-3 py-1.5">
+                      <UserPlus size={14} /> Assign Head
+                    </Button>
+                  ) : (
+                    <>
+                      <Button variant="secondary" onClick={() => openReplaceHead(union)} className="text-xs px-3 py-1.5">
+                        Replace
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Create/Edit Modal */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-slate-800 p-6 rounded-lg w-[540px] space-y-4 max-h-[90vh] overflow-y-auto">
@@ -175,6 +292,91 @@ export default function UnionPage() {
             <div className="flex justify-end gap-2 pt-2">
               <button onClick={() => setModalOpen(false)} className="px-4 py-2 border rounded">{t('common.cancel')}</button>
               <Button onClick={handleSave}>{editing ? t('common.update') : t('common.create')}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Head Modal */}
+      {showAssignHead && selectedUnion && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-slate-700">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Assign Head of RUM</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{selectedUnion.name}</p>
+              </div>
+              <button onClick={() => setShowAssignHead(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg"><X size={20} className="text-gray-400" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3 text-sm text-blue-700 dark:text-blue-300">
+                Create a new user account with the Head of RUM role for this union.
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Full Name *</label>
+                <input value={assignForm.fullName} onChange={(e) => setAssignForm({ ...assignForm, fullName: e.target.value })} className="w-full border p-2 rounded" placeholder="Enter full name" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Email *</label>
+                <input type="email" value={assignForm.email} onChange={(e) => setAssignForm({ ...assignForm, email: e.target.value })} className="w-full border p-2 rounded" placeholder="Enter email" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Phone</label>
+                <input value={assignForm.phone} onChange={(e) => setAssignForm({ ...assignForm, phone: e.target.value })} className="w-full border p-2 rounded" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Password *</label>
+                <input type="password" value={assignForm.password} onChange={(e) => setAssignForm({ ...assignForm, password: e.target.value })} className="w-full border p-2 rounded" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-100 dark:border-slate-700">
+              <Button variant="secondary" onClick={() => setShowAssignHead(false)}>Cancel</Button>
+              <Button variant="success" onClick={handleAssignHead}>Assign Head</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Replace Head Modal */}
+      {showReplaceHead && selectedUnion && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-slate-700">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Replace Head of RUM</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{selectedUnion.name}</p>
+              </div>
+              <button onClick={() => setShowReplaceHead(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg"><X size={20} className="text-gray-400" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="flex-1 bg-gray-50 dark:bg-slate-700/50 rounded-xl p-4 text-center">
+                  <p className="text-xs text-gray-500 mb-1">Current Head</p>
+                  <p className="font-semibold text-sm">{selectedUnion.headUserName || 'Vacant'}</p>
+                </div>
+                <ArrowRight size={20} className="text-primary" />
+                <div className="flex-1 bg-primary/5 rounded-xl p-4 text-center border-2 border-dashed border-primary/30">
+                  <p className="text-xs text-primary mb-1">New Head</p>
+                  <p className="font-semibold text-sm">{replaceUserId ? users.find(u => u.id === replaceUserId)?.fullName : 'Select below'}</p>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Select New Head of RUM *</label>
+                {usersLoading ? (
+                  <p className="text-sm text-gray-400">Loading users...</p>
+                ) : (
+                  <select value={replaceUserId} onChange={(e) => setReplaceUserId(Number(e.target.value))} className="w-full border p-2 rounded">
+                    <option value={0}>Choose a person...</option>
+                    {users.map((u: any) => (
+                      <option key={u.id} value={u.id}>{u.fullName} — {u.email}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-100 dark:border-slate-700">
+              <Button variant="secondary" onClick={() => setShowReplaceHead(false)}>Cancel</Button>
+              <Button variant="success" onClick={handleReplaceHead} disabled={!replaceUserId}>Confirm Replace</Button>
             </div>
           </div>
         </div>

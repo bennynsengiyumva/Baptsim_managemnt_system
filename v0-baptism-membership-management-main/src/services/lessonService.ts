@@ -5,17 +5,20 @@ export const lessonService = {
   getAll: () =>
     api.get<Lesson[]>('/api/lessons').then((r) => r.data),
 
-  getById: (id: string, includeAnswers = false) =>
-    api.get<Lesson>(`/api/lessons/${id}`, { params: { includeAnswers } }).then((r) => r.data),
+  getById: (id: string, includeAnswers = false, language?: string) =>
+    api.get<Lesson>(`/api/lessons/${id}`, { params: { includeAnswers, language } }).then((r) => r.data),
 
   getByInstructor: (instructorId: string) =>
     api.get<Lesson[]>(`/api/lessons/by-instructor/${instructorId}`).then((r) => r.data),
 
-  getByCandidate: (candidateId: string) =>
-    api.get<Lesson[]>(`/api/lessons/by-candidate/${candidateId}`).then((r) => r.data),
+  getByCandidate: (candidateId: string, language?: string) =>
+    api.get<Lesson[]>(`/api/lessons/by-candidate/${candidateId}`, { params: { language } }).then((r) => r.data),
 
   getProgress: (candidateId: string) =>
     api.get<number>(`/api/lessons/progress/${candidateId}`).then((r) => r.data),
+
+  getProgressDetail: (candidateId: string) =>
+    api.get<{ totalLessons: number; completedLessons: number; remainingLessons: number; progressPercentage: number }>(`/api/lessons/progress-detail/${candidateId}`).then((r) => r.data),
 
   create: (formData: FormData) =>
     api.post<Lesson>('/api/lessons/create', formData).then((r) => r.data),
@@ -28,6 +31,16 @@ export const lessonService = {
 
   addQuestions: (lessonId: string, questions: any[]) =>
     api.post<Lesson>(`/api/lessons/${lessonId}/questions`, questions).then((r) => r.data),
+
+  startLesson: (lessonId: string, candidateId: string) =>
+    api.post<Lesson>(`/api/lessons/${lessonId}/start-lesson`, null, {
+      params: { candidateId },
+    }).then((r) => r.data),
+
+  contentComplete: (lessonId: string, candidateId: string) =>
+    api.post<Lesson>(`/api/lessons/${lessonId}/content-complete`, null, {
+      params: { candidateId },
+    }).then((r) => r.data),
 
   startAttempt: (lessonId: string, candidateId: string) =>
     api.post<LessonAttempt>(`/api/lessons/${lessonId}/start-attempt`, null, {
@@ -62,6 +75,9 @@ export const lessonService = {
 
   getGradesByLesson: (lessonId: string) =>
     api.get<LessonGrade[]>(`/api/lessons/${lessonId}/grades`).then((r) => r.data),
+
+  getGradesByCandidate: (candidateId: string) =>
+    api.get<LessonGrade[]>(`/api/lessons/grades/candidate/${candidateId}`).then((r) => r.data),
 
   getCandidatesByLesson: (lessonId: string) =>
     api.get<LessonGrade[]>(`/api/lessons/${lessonId}/grades`).then((r) => r.data),

@@ -191,7 +191,7 @@ const lessonSlice = createSlice({
         if (state.currentLesson && state.currentLesson.id === action.payload.lessonId) {
           if (action.payload.passed) {
             state.currentLesson.completed = true;
-            state.currentLesson.studentScore = action.payload.score;
+            state.currentLesson.candidateScore = action.payload.score;
           }
         }
       })

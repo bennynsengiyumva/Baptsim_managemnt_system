@@ -34,6 +34,11 @@ public class Baptism extends AuditableEntity {
 
     private int baptismOrder;
 
+    @Enumerated(EnumType.STRING)
+    private BaptismRequestStatus requestStatus = BaptismRequestStatus.PENDING;
+
+    private LocalDateTime requestedAt;
+
     @ElementCollection
     private List<String> photoUrls;
 
@@ -46,6 +51,16 @@ public class Baptism extends AuditableEntity {
     @ManyToOne
     @JoinColumn(name = "event_id")
     private BaptismEvent event;
+
+    public enum BaptismRequestStatus {
+        PENDING,
+        APPROVED,
+        REJECTED,
+        BAPTIZED,
+        CERTIFICATE_GENERATED,
+        CERTIFICATE_SIGNED,
+        TRANSFERRED_TO_CMS
+    }
 
     public LocalDate getBaptismDate() { return baptismDate; }
     public void setBaptismDate(LocalDate baptismDate) { this.baptismDate = baptismDate; }
@@ -79,6 +94,12 @@ public class Baptism extends AuditableEntity {
 
     public int getBaptismOrder() { return baptismOrder; }
     public void setBaptismOrder(int baptismOrder) { this.baptismOrder = baptismOrder; }
+
+    public BaptismRequestStatus getRequestStatus() { return requestStatus; }
+    public void setRequestStatus(BaptismRequestStatus requestStatus) { this.requestStatus = requestStatus; }
+
+    public LocalDateTime getRequestedAt() { return requestedAt; }
+    public void setRequestedAt(LocalDateTime requestedAt) { this.requestedAt = requestedAt; }
 
     public List<String> getPhotoUrls() { return photoUrls; }
     public void setPhotoUrls(List<String> photoUrls) { this.photoUrls = photoUrls; }

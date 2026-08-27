@@ -6,12 +6,15 @@ import com.church.baptism.entity.church.ChurchField;
 import com.church.baptism.entity.church.District;
 import com.church.baptism.entity.user.Role;
 import com.church.baptism.entity.user.User;
+import com.church.baptism.entity.church.DistrictAssignment;
 import com.church.baptism.repository.church.ChurchFieldRepository;
+import com.church.baptism.repository.church.DistrictAssignmentRepository;
 import com.church.baptism.repository.church.DistrictRepository;
 import com.church.baptism.repository.user.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -21,13 +24,16 @@ public class DistrictService {
     private final DistrictRepository repository;
     private final ChurchFieldRepository fieldRepository;
     private final UserRepository userRepository;
+    private final DistrictAssignmentRepository districtAssignmentRepository;
     private final PasswordEncoder passwordEncoder;
 
     public DistrictService(DistrictRepository repository, ChurchFieldRepository fieldRepository,
-                           UserRepository userRepository, PasswordEncoder passwordEncoder) {
+                           UserRepository userRepository, DistrictAssignmentRepository districtAssignmentRepository,
+                           PasswordEncoder passwordEncoder) {
         this.repository = repository;
         this.fieldRepository = fieldRepository;
         this.userRepository = userRepository;
+        this.districtAssignmentRepository = districtAssignmentRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -53,6 +59,15 @@ public class DistrictService {
             head.setField(field);
             head.setDistrict(district);
             userRepository.save(head);
+
+            // Auto-assign as head of district
+            DistrictAssignment assignment = new DistrictAssignment();
+            assignment.setDistrict(district);
+            assignment.setPastor(head);
+            assignment.setStartDate(LocalDate.now());
+            assignment.setStatus(DistrictAssignment.AssignmentStatus.ACTIVE);
+            assignment.setPerformedBy("System");
+            districtAssignmentRepository.save(assignment);
         }
 
         return mapToResponse(district);
@@ -101,6 +116,17 @@ public class DistrictService {
         if (district.getField() != null) {
             r.setFieldId(district.getField().getId());
             r.setFieldName(district.getField().getName());
+        }
+        // Include head info from active assignment
+        DistrictAssignment activeAssignment = districtAssignmentRepository.findByDistrictIdAndStatus(
+                district.getId(), DistrictAssignment.AssignmentStatus.ACTIVE)
+                .stream().findFirst().orElse(null);
+        if (activeAssignment != null && activeAssignment.getPastor() != null) {
+            User head = activeAssignment.getPastor();
+            r.setHeadUserId(head.getId());
+            r.setHeadUserName(head.getFullName());
+            r.setHeadUserEmail(head.getEmail());
+            r.setHeadUserPhone(head.getPhone());
         }
         return r;
     }

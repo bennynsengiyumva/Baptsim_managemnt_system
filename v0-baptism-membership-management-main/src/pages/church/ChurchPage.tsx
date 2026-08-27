@@ -10,6 +10,7 @@ import {
   Building2,
   UserPlus,
   UserMinus,
+  Church as ChurchIcon,
 } from 'lucide-react';
 
 import { selectUser } from '@/store/authStore';
@@ -19,6 +20,7 @@ import { userService } from '@/services/userService';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import EmptyState from '@/components/ui/EmptyState';
 import toast from 'react-hot-toast';
 
 /** Pastor type */
@@ -94,6 +96,7 @@ export default function ChurchPage() {
    * DELETE CHURCH
    * ========================= */
   const handleDelete = async (id: number) => {
+    if (!window.confirm('Are you sure you want to delete this church? All associated data will be lost.')) return;
     try {
       await churchService.deleteChurch(id);
       toast.success('Church deleted');
@@ -178,6 +181,7 @@ export default function ChurchPage() {
           {isAdmin && record.pastor && (
             <button
               onClick={async () => {
+                if (!window.confirm('Remove the pastor from this church?')) return;
                 try {
                   await churchService.unassignPastor(value);
                   toast.success('Pastor unassigned');
@@ -254,7 +258,13 @@ export default function ChurchPage() {
           columns={columns}
           data={filteredChurches}
           isLoading={isLoading}
-          emptyMessage={t('common.noChurchesFound')}
+          renderEmpty={
+            <EmptyState
+              icon={<ChurchIcon size={32} className="text-slate-300 dark:text-slate-600" />}
+              title={t('common.noChurchesFound')}
+              message="No churches match your search criteria."
+            />
+          }
         />
       </Card>
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Trash2, Edit, Eye, UserCheck, X, BookOpen, Award, GraduationCap, Mail, Phone, MapPin } from 'lucide-react';
+import { Plus, Search, Trash2, Edit, Eye, UserCheck, X, BookOpen, Award, GraduationCap, Mail, Phone, MapPin, Users } from 'lucide-react';
 import {
   fetchCandidates,
   deleteCandidate,
@@ -18,6 +18,7 @@ import { lessonService } from '@/services/lessonService';
 import DataTable from '@/components/ui/DataTable';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import EmptyState from '@/components/ui/EmptyState';
 import { useTranslation } from 'react-i18next';
 import { Candidate, LessonGrade } from '@/types';
 import toast from 'react-hot-toast';
@@ -111,11 +112,11 @@ export default function CandidatesPage() {
         lessonTitle: l.lessonTitle,
         candidateId: l.candidateId,
         candidateName: l.candidateName,
-        studentScore: l.studentScore ?? 0,
+        candidateScore: l.candidateScore ?? 0,
         requiredScore: l.requiredScore ?? 0,
         completed: l.completed ?? false,
         attemptsUsed: l.attemptsUsed ?? 0,
-        bestScore: l.bestScore ?? l.studentScore ?? 0,
+        bestScore: l.bestScore ?? l.candidateScore ?? 0,
       }));
       setCandidateGrades(grades);
     } catch {
@@ -296,7 +297,13 @@ export default function CandidatesPage() {
           columns={columns}
           data={filteredCandidates}
           isLoading={isLoading}
-          emptyMessage="No candidates found"
+          renderEmpty={
+            <EmptyState
+              icon={<Users size={32} className="text-slate-300 dark:text-slate-600" />}
+              title={t('common.noCandidatesFound')}
+              message="No candidates match your search criteria."
+            />
+          }
         />
       </Card>
 

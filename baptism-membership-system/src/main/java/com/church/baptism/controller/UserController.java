@@ -11,9 +11,11 @@ import com.church.baptism.service.auth.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -27,6 +29,7 @@ public class UserController {
     private final ActivityLogService activityLogService;
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'HEAD_OF_RUM')")
     public ResponseEntity<List<UserResponse>> getAllUsers() {
         List<UserResponse> users = userRepository.findAll()
                 .stream()
@@ -36,6 +39,7 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UserResponse> getUserById(@PathVariable Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -65,11 +69,29 @@ public class UserController {
         if (request.getAvatar() != null) {
             user.setAvatar(request.getAvatar());
         }
+        if (request.getPreferredLanguage() != null) {
+            user.setPreferredLanguage(request.getPreferredLanguage());
+        }
+        if (request.getGender() != null) {
+            user.setGender(request.getGender());
+        }
+        if (request.getDateOfBirth() != null) {
+            try {
+                user.setDateOfBirth(LocalDate.parse(request.getDateOfBirth()));
+            } catch (Exception ignored) {}
+        }
+        if (request.getAddress() != null) {
+            user.setAddress(request.getAddress());
+        }
+        if (request.getEmergencyContact() != null) {
+            user.setEmergencyContact(request.getEmergencyContact());
+        }
         userRepository.save(user);
         return ResponseEntity.ok(toResponse(user));
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'HEAD_OF_RUM')")
     public ResponseEntity<?> createUser(@RequestBody RegisterRequest request, Authentication authentication) {
         User creator = userRepository.findByEmail(authentication.getName())
                 .orElseThrow(() -> new RuntimeException("Creator not found"));
@@ -77,6 +99,7 @@ public class UserController {
     }
 
     @GetMapping("/pastors")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HEAD_OF_RUM')")
     public ResponseEntity<List<UserResponse>> getPastors() {
         List<UserResponse> pastors = userRepository.findByRole(Role.PASTOR)
                 .stream()
@@ -86,6 +109,7 @@ public class UserController {
     }
 
     @PutMapping("/{id}/status")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> toggleUserStatus(
             @PathVariable Long id,
             @RequestBody Map<String, Boolean> body,
@@ -110,6 +134,7 @@ public class UserController {
     }
 
     @PutMapping("/{id}/role")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> updateUserRole(
             @PathVariable Long id,
             @RequestBody Map<String, String> body,
@@ -134,6 +159,7 @@ public class UserController {
     }
 
     @GetMapping("/by-field/{fieldId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HEAD_OF_RUM')")
     public ResponseEntity<List<UserResponse>> getUsersByField(@PathVariable Long fieldId) {
         List<UserResponse> users = userRepository.findByFieldId(fieldId)
                 .stream().map(this::toResponse).toList();
@@ -141,6 +167,7 @@ public class UserController {
     }
 
     @GetMapping("/stats")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> getUserStats() {
         long total = userRepository.count();
         long admins = userRepository.countByRole(Role.ADMIN);
@@ -176,6 +203,12 @@ public class UserController {
                 .districtId(user.getDistrict() != null ? user.getDistrict().getId() : null)
                 .churchName(user.getChurch() != null ? user.getChurch().getChurchName() : null)
                 .churchId(user.getChurch() != null ? user.getChurch().getId() : null)
+                .preferredLanguage(user.getPreferredLanguage() != null ? user.getPreferredLanguage() : "en")
+                .gender(user.getGender())
+                .dateOfBirth(user.getDateOfBirth() != null ? user.getDateOfBirth().toString() : null)
+                .address(user.getAddress())
+                .emergencyContact(user.getEmergencyContact())
+                .signaturePath(user.getSignaturePath())
                 .build();
     }
 }

@@ -19,6 +19,7 @@ export default function CertificatesPage() {
   const [searchTerm, setSearchTerm] = useState('');
 
   const handleDelete = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this certificate? This action cannot be undone.')) return;
     try {
       await (dispatch(deleteCertificate(id) as any) as any).unwrap();
       toast.success('Certificate deleted');

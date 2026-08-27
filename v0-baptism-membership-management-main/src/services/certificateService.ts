@@ -8,6 +8,12 @@ export const certificateService = {
     return response.data;
   },
 
+  // Get all baptized certificates (for Head of District review)
+  getAllBaptized: async () => {
+    const response = await apiClient.get<BaptismRegistration[]>('/api/certificates/all-baptized');
+    return response.data;
+  },
+
   // Sign a certificate (pastor signs it)
   signCertificate: async (baptismId: string) => {
     await apiClient.put(`/api/certificates/${baptismId}/sign`);
@@ -49,9 +55,29 @@ export const certificateService = {
     return response.data;
   },
 
-  // Download certificate (returns PDF)
+  // Download certificate (returns PDF blob)
   downloadCertificate: async (id: string) => {
     const response = await apiClient.get(`/api/certificates/${id}/download`, { responseType: 'blob' });
     return response.data;
+  },
+
+  // Download certificate and trigger browser download
+  downloadCertificateFile: async (baptismId: string, filename?: string) => {
+    const blob = await certificateService.downloadCertificate(baptismId);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || `baptism-certificate-${baptismId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  // Preview certificate in new tab
+  previewCertificate: async (baptismId: string) => {
+    const blob = await certificateService.downloadCertificate(baptismId);
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
   },
 };

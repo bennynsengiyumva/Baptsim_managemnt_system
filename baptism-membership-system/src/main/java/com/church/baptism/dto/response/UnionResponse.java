@@ -8,6 +8,10 @@ public class UnionResponse {
     private String phone;
     private String email;
     private boolean active;
+    private Long headUserId;
+    private String headUserName;
+    private String headUserEmail;
+    private String headUserPhone;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -23,4 +27,12 @@ public class UnionResponse {
     public void setEmail(String email) { this.email = email; }
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }
+    public Long getHeadUserId() { return headUserId; }
+    public void setHeadUserId(Long headUserId) { this.headUserId = headUserId; }
+    public String getHeadUserName() { return headUserName; }
+    public void setHeadUserName(String headUserName) { this.headUserName = headUserName; }
+    public String getHeadUserEmail() { return headUserEmail; }
+    public void setHeadUserEmail(String headUserEmail) { this.headUserEmail = headUserEmail; }
+    public String getHeadUserPhone() { return headUserPhone; }
+    public void setHeadUserPhone(String headUserPhone) { this.headUserPhone = headUserPhone; }
 }

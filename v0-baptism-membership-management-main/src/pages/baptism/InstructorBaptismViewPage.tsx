@@ -66,7 +66,7 @@ export default function InstructorBaptismViewPage() {
                 <div className="flex items-center gap-2 text-indigo-600 mb-2">
                   <Calendar size={16} />
                   <span className="font-semibold">
-                    {new Date(event.eventDate).toLocaleDateString()}
+                    {event.eventName || new Date(event.eventDate).toLocaleDateString()}
                   </span>
                 </div>
                 <p className="flex items-center gap-2 text-sm text-slate-600">

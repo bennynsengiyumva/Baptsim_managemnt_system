@@ -20,6 +20,9 @@ public class AuthResponse {
     public String districtName;
     public Long churchId;
     public String churchName;
+    public String profilePictureUrl;
+    public String preferredLanguage;
+    public String roleChangeMessage;
 
     public AuthResponse(String token, String role, String email, Long id, String fullName) {
         this.token = token;
@@ -50,5 +53,7 @@ public class AuthResponse {
         this.districtName = user.getDistrict() != null ? user.getDistrict().getName() : null;
         this.churchId = user.getChurch() != null ? user.getChurch().getId() : null;
         this.churchName = user.getChurch() != null ? user.getChurch().getChurchName() : null;
+        this.preferredLanguage = user.getPreferredLanguage() != null ? user.getPreferredLanguage() : "en";
+        this.roleChangeMessage = user.getRoleChangeMessage();
     }
 }

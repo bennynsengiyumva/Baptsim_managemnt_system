@@ -53,6 +53,8 @@ export default function CandidateFormPage() {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [cohorts, setCohorts] = useState<any[]>([]);
+  const [cohortId, setCohortId] = useState<string>('');
 
   // ✅ Auto-set church for FCE
   if (!isEditing && isFCE && currentUser?.churchId && !formData.churchId) {
@@ -106,6 +108,20 @@ export default function CandidateFormPage() {
     }
   }, [candidateError]);
 
+  useEffect(() => {
+    if (formData.instructorId) {
+      import('@/services/cohortService').then(({ cohortService }) => {
+        cohortService.getAll().then((allCohorts: any) => {
+          const filtered = Array.isArray(allCohorts) ? allCohorts.filter((c: any) => c.instructorId === Number(formData.instructorId)) : [];
+          setCohorts(filtered);
+        }).catch(() => {});
+      });
+    } else {
+      setCohorts([]);
+      setCohortId('');
+    }
+  }, [formData.instructorId]);
+
   const mutation = useMutation({
     mutationFn: async () => {
       const payload: any = {
@@ -121,11 +137,26 @@ export default function CandidateFormPage() {
       if (!isEditing) {
         payload.password = formData.password;
       }
+      let result;
       if (isEditing) {
-        return await apiClient.put(`/api/candidates/${id}`, payload);
+        result = await apiClient.put(`/api/candidates/${id}`, payload);
       } else {
-        return await apiClient.post('/api/candidates', payload);
+        result = await apiClient.post('/api/candidates', payload);
       }
+
+      // If cohort is selected, call the assignment API
+      if (cohortId && formData.instructorId) {
+        const candidateId = isEditing ? Number(id) : result.data?.data?.id || result.data?.id;
+        if (candidateId) {
+          await apiClient.post('/api/cohorts/assign', {
+            candidateId,
+            instructorId: Number(formData.instructorId),
+            cohortId: Number(cohortId),
+          });
+        }
+      }
+
+      return result;
     },
     onSuccess: () => {
       toast.success(isEditing ? t('common.candidateUpdated') : t('common.candidateCreated'));
@@ -252,6 +283,23 @@ export default function CandidateFormPage() {
                 ))}
               </select>
             </div>
+
+            {/* ✅ Cohort selector — shown when instructor is selected */}
+            {formData.instructorId && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Assign to Cohort</label>
+                <select
+                  value={cohortId}
+                  onChange={(e) => setCohortId(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Select a cohort</option>
+                  {cohorts.map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.cohortName}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Password fields — create mode only */}
             {!isEditing && (

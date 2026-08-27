@@ -99,6 +99,26 @@ public ResponseEntity<?> createUser(
         return ResponseEntity.ok(Map.of("twoFactorEnabled", enabled));
     }
 
+    @GetMapping("/me")
+    public ResponseEntity<?> getCurrentUser(
+            Authentication authentication
+    ) {
+        if (authentication == null) {
+            return ResponseEntity.status(401).body("Not authenticated");
+        }
+        
+        User user = userRepository.findByEmail(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        
+        return ResponseEntity.ok(Map.of(
+                "id", user.getId(),
+                "email", user.getEmail(),
+                "fullName", user.getFullName(),
+                "role", user.getRole().name(),
+                "roleChangeMessage", user.getRoleChangeMessage() != null ? user.getRoleChangeMessage() : ""
+        ));
+    }
+
     @PostMapping("/two-factor/send-setup-code")
     public ResponseEntity<?> sendSetupCode(
             Authentication authentication
@@ -225,6 +245,19 @@ public ResponseEntity<?> createUser(
         try {
             authService.resendVerificationEmail(email);
             return ResponseEntity.ok(Map.of("message", "Verification email sent"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/google")
+    public ResponseEntity<?> googleLogin(@RequestBody Map<String, String> body) {
+        String idToken = body.get("idToken");
+        if (idToken == null || idToken.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Google ID token is required"));
+        }
+        try {
+            return ResponseEntity.ok(authService.googleLogin(idToken));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }

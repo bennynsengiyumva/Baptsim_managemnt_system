@@ -6,12 +6,15 @@ import com.church.baptism.entity.church.ChurchField;
 import com.church.baptism.entity.church.Union;
 import com.church.baptism.entity.user.Role;
 import com.church.baptism.entity.user.User;
+import com.church.baptism.entity.church.FieldAssignment;
+import com.church.baptism.repository.church.FieldAssignmentRepository;
 import com.church.baptism.repository.church.ChurchFieldRepository;
 import com.church.baptism.repository.church.UnionRepository;
 import com.church.baptism.repository.user.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -21,13 +24,16 @@ public class ChurchFieldService {
     private final ChurchFieldRepository repository;
     private final UnionRepository unionRepository;
     private final UserRepository userRepository;
+    private final FieldAssignmentRepository fieldAssignmentRepository;
     private final PasswordEncoder passwordEncoder;
 
     public ChurchFieldService(ChurchFieldRepository repository, UnionRepository unionRepository,
-                              UserRepository userRepository, PasswordEncoder passwordEncoder) {
+                              UserRepository userRepository, FieldAssignmentRepository fieldAssignmentRepository,
+                              PasswordEncoder passwordEncoder) {
         this.repository = repository;
         this.unionRepository = unionRepository;
         this.userRepository = userRepository;
+        this.fieldAssignmentRepository = fieldAssignmentRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -52,6 +58,14 @@ public class ChurchFieldService {
             head.setUnion(union);
             head.setField(field);
             userRepository.save(head);
+
+            // Create field assignment record so leadership shows correctly
+            FieldAssignment assignment = new FieldAssignment();
+            assignment.setField(field);
+            assignment.setHead(head);
+            assignment.setStartDate(LocalDate.now());
+            assignment.setStatus(FieldAssignment.AssignmentStatus.ACTIVE);
+            fieldAssignmentRepository.save(assignment);
         }
 
         return mapToResponse(field);
@@ -100,6 +114,17 @@ public class ChurchFieldService {
         if (field.getUnion() != null) {
             r.setUnionId(field.getUnion().getId());
             r.setUnionName(field.getUnion().getName());
+        }
+        // Include head info from active assignment
+        FieldAssignment activeAssignment = fieldAssignmentRepository.findByFieldIdAndStatus(
+                field.getId(), FieldAssignment.AssignmentStatus.ACTIVE)
+                .stream().findFirst().orElse(null);
+        if (activeAssignment != null && activeAssignment.getHead() != null) {
+            User head = activeAssignment.getHead();
+            r.setHeadUserId(head.getId());
+            r.setHeadUserName(head.getFullName());
+            r.setHeadUserEmail(head.getEmail());
+            r.setHeadUserPhone(head.getPhone());
         }
         return r;
     }

@@ -27,6 +27,11 @@ export default function ProfilePage() {
   const [formData, setFormData] = useState({
     fullName: user?.fullName || '',
     phone: user?.phone || '',
+    email: user?.email || '',
+    gender: user?.gender || '',
+    dateOfBirth: user?.dateOfBirth || '',
+    address: user?.address || '',
+    emergencyContact: user?.emergencyContact || '',
   });
 
   const handleLogout = async () => {
@@ -38,7 +43,12 @@ export default function ProfilePage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await userService.updateProfile(formData);
+      let res;
+      if (user?.role === 'CANDIDATE') {
+        res = await apiClient.put('/api/candidates/profile', formData);
+      } else {
+        res = await userService.updateProfile(formData);
+      }
       const updated = res.data || res;
       dispatch(setUser({ ...user, ...updated }));
       setEditing(false);
@@ -54,24 +64,49 @@ export default function ProfilePage() {
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const dataUrl = ev.target?.result as string;
+
+    // For candidates, upload to backend profile picture storage
+    if (user?.role === 'CANDIDATE') {
       try {
-        const res = await userService.updateProfile({ avatar: dataUrl });
-        const updated = res.data || res;
-        dispatch(setUser({ ...user, ...updated }));
-        toast.success('Avatar updated');
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await apiClient.post(`/api/candidates/${user.id}/profile-picture`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        const updated = res.data;
+        const picPath = updated.profilePicturePath || updated.profilePictureUrl || '';
+        const fullUrl = picPath.startsWith('http') ? picPath : (picPath ? `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8084'}${picPath}` : '');
+        dispatch(setUser({ ...user, profilePictureUrl: fullUrl || user?.profilePictureUrl }));
+        toast.success('Profile picture updated');
       } catch {
-        toast.error('Failed to update avatar');
+        toast.error('Failed to upload profile picture');
       }
-    };
-    reader.readAsDataURL(file);
+    } else {
+      // For other roles, use base64 avatar
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const dataUrl = ev.target?.result as string;
+        try {
+          const res = await userService.updateProfile({ avatar: dataUrl });
+          const updated = res.data || res;
+          dispatch(setUser({ ...user, ...updated }));
+          toast.success('Avatar updated');
+        } catch {
+          toast.error('Failed to update avatar');
+        }
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
-  const handleLanguageChange = (lang: 'en' | 'rw' | 'fr') => {
-    dispatch(setLanguage(lang));
+  const handleLanguageChange = (lang: string) => {
+    dispatch(setLanguage(lang as 'en' | 'rw'));
     i18n.changeLanguage(lang);
+    localStorage.setItem('language', lang);
+    if (user?.id) {
+      userService.updateProfile({ preferredLanguage: lang }).catch(() => {});
+      dispatch(setUser({ ...user, preferredLanguage: lang }));
+    }
   };
 
   const [resending, setResending] = useState(false);
@@ -124,8 +159,8 @@ export default function ProfilePage() {
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
           {/* Avatar */}
           <div className="relative group cursor-pointer" onClick={handleAvatarClick}>
-            {user?.avatar ? (
-              <img src={user.avatar} alt="avatar" className="w-24 h-24 rounded-full object-cover border-4 border-primary/20" />
+            {(user?.profilePictureUrl || user?.avatar) ? (
+              <img src={user.profilePictureUrl || user.avatar} alt="avatar" className="w-24 h-24 rounded-full object-cover border-4 border-primary/20" />
             ) : (
               <div className="w-24 h-24 rounded-full bg-primary flex items-center justify-center text-white text-3xl font-bold border-4 border-primary/20">
                 {initial}
@@ -188,6 +223,55 @@ export default function ProfilePage() {
                 className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={e => setFormData({ ...formData, email: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Gender</label>
+              <select
+                value={formData.gender}
+                onChange={e => setFormData({ ...formData, gender: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+              >
+                <option value="">Select gender</option>
+                <option value="MALE">Male</option>
+                <option value="FEMALE">Female</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date of Birth</label>
+              <input
+                type="date"
+                value={formData.dateOfBirth}
+                onChange={e => setFormData({ ...formData, dateOfBirth: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Emergency Contact</label>
+              <input
+                type="text"
+                value={formData.emergencyContact}
+                onChange={e => setFormData({ ...formData, emergencyContact: e.target.value })}
+                placeholder="Name - Phone"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Address</label>
+              <input
+                type="text"
+                value={formData.address}
+                onChange={e => setFormData({ ...formData, address: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+              />
+            </div>
           </div>
         )}
       </div>
@@ -224,11 +308,10 @@ export default function ProfilePage() {
             </div>
             <select
               value={language}
-              onChange={e => handleLanguageChange(e.target.value as 'en' | 'rw' | 'fr')}
+              onChange={e => handleLanguageChange(e.target.value)}
               className="px-3 py-1.5 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-sm"
             >
               <option value="en">English</option>
-              <option value="fr">Français</option>
               <option value="rw">Kinyarwanda</option>
             </select>
           </div>

@@ -4,10 +4,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft, Church, User, CheckCircle,
-  Download, Trash2
+  Download, Trash2, Loader2
 } from 'lucide-react';
 import { baptismService } from '@/services/baptismService';
 import { candidateService } from '@/services/candidateService';
+import { certificateService } from '@/services/certificateService';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import toast from 'react-hot-toast';
@@ -22,6 +23,7 @@ export default function BaptismEventDetailPage() {
   const [witnessName, setWitnessName] = useState('');
   const [sponsorName, setSponsorName] = useState('');
   const [photos, setPhotos] = useState<File[]>([]);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   const { data: event, isLoading } = useQuery({
     queryKey: ['baptism-event', id],
@@ -37,12 +39,17 @@ export default function BaptismEventDetailPage() {
 
   const confirmMutation = useMutation({
     mutationFn: (baptismId: string) => baptismService.confirmBaptism(baptismId, photos),
+    onMutate: (baptismId) => setConfirmingId(baptismId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['baptism-event', id] });
       setPhotos([]);
+      setConfirmingId(null);
       toast.success('Baptism confirmed');
     },
-    onError: (err: any) => toast.error(err.message || 'Failed to confirm'),
+    onError: (err: any) => {
+      setConfirmingId(null);
+      toast.error(err.message || 'Failed to confirm');
+    },
   });
 
   const registerMutation = useMutation({
@@ -110,7 +117,8 @@ export default function BaptismEventDetailPage() {
         <Church size={28} className="text-indigo-600" />
         <div className="flex-1">
           <h1 className="text-2xl font-bold">
-            {t('common.baptismEvent')} &mdash; {new Date(event.eventDate).toLocaleDateString()}
+            {event.eventName || t('common.baptismEvent')} &mdash; {new Date(event.eventDate).toLocaleDateString()}
+            {event.eventTime && <span className="text-lg font-normal ml-2">at {event.eventTime}</span>}
           </h1>
           <p className="text-sm text-slate-500">
             {event.location} &middot; {t('common.officiant', { name: event.officiatingPastor })}
@@ -210,7 +218,16 @@ export default function BaptismEventDetailPage() {
                   <span className="font-mono text-sm text-slate-400">#{reg.baptismOrder}</span>
                   <User size={18} className="text-slate-400" />
                   <div>
-                    <p className="font-medium">{reg.candidateName}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">{reg.candidateName}</p>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        reg.requestStatus === 'APPROVED' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
+                        reg.requestStatus === 'REJECTED' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' :
+                        'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
+                      }`}>
+                        {reg.requestStatus || 'PENDING'}
+                      </span>
+                    </div>
                     <p className="text-xs text-slate-500">
                       {t('common.witness')} {reg.witnessName || '—'} &middot; {t('common.sponsor')} {reg.sponsorName || '—'}
                     </p>
@@ -230,9 +247,13 @@ export default function BaptismEventDetailPage() {
                   <Button
                     size="sm"
                     onClick={() => confirmMutation.mutate(reg.id)}
-                    disabled={confirmMutation.isPending}
+                    disabled={confirmingId === reg.id}
                   >
-                    <CheckCircle size={16} /> {t('common.confirmBaptism')}
+                    {confirmingId === reg.id ? (
+                      <span className="flex items-center gap-1"><Loader2 size={14} className="animate-spin" /> Confirming...</span>
+                    ) : (
+                      <span className="flex items-center gap-1"><CheckCircle size={14} /> {t('common.confirmBaptism')}</span>
+                    )}
                   </Button>
                   <button
                     onClick={() => {
@@ -268,15 +289,13 @@ export default function BaptismEventDetailPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <a
-                    href={`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api/certificates/${reg.id}/download`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={() => certificateService.downloadCertificateFile(reg.id)}
                     className="text-indigo-600 hover:text-indigo-800 p-1"
                     title={t('common.downloadCertificate')}
                   >
                     <Download size={16} />
-                  </a>
+                  </button>
                 </div>
               </div>
             ))}

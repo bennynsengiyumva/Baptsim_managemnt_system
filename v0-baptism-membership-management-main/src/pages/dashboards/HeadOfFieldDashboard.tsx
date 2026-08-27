@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { selectUser } from '@/store/authStore';
 import { districtService } from '@/services/districtService';
@@ -180,6 +181,7 @@ export default function HeadOfFieldDashboard() {
       await userService.createUser({
         fullName: newPastor.fullName,
         email: newPastor.email,
+        password: newPastor.password,
         role: 'HEAD_OF_DISTRICT',
         phone: newPastor.phone || undefined,
         fieldId: user!.fieldId,
@@ -188,6 +190,7 @@ export default function HeadOfFieldDashboard() {
       toast.success('Pastor account (HEAD_OF_DISTRICT) created');
       setShowCreatePastor(false);
       setNewPastor({ fullName: '', email: '', password: '', phone: '' });
+      loadData();
     } catch { toast.error('Failed to create pastor account'); }
     setSaving(false);
   };
@@ -221,7 +224,7 @@ export default function HeadOfFieldDashboard() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+        <div onClick={() => navigate('/district')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.totalDistricts')}</p>
@@ -232,7 +235,7 @@ export default function HeadOfFieldDashboard() {
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+        <div onClick={() => navigate('/church')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.totalChurches')}</p>
@@ -243,7 +246,7 @@ export default function HeadOfFieldDashboard() {
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+        <div onClick={() => navigate('/candidates')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.totalCandidates')}</p>
@@ -254,7 +257,7 @@ export default function HeadOfFieldDashboard() {
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+        <div onClick={() => navigate('/candidates')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.totalBaptized')}</p>
@@ -324,6 +327,36 @@ export default function HeadOfFieldDashboard() {
             </ResponsiveContainer>
           )}
         </div>
+      </div>
+
+      {/* Baptism Status Distribution PieChart */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Baptism Status Distribution</h3>
+        <ResponsiveContainer width="100%" height={280}>
+          <PieChart>
+            <Pie
+              data={[
+                { name: 'Registered', value: progress.registered },
+                { name: 'In Progress', value: progress.inProgress },
+                { name: 'Ready for Baptism', value: progress.readyForBaptism },
+                { name: 'Baptized', value: progress.baptized },
+              ]}
+              cx="50%"
+              cy="50%"
+              innerRadius={60}
+              outerRadius={100}
+              paddingAngle={4}
+              dataKey="value"
+              label={({ name, value }) => value > 0 ? `${name}: ${value}` : ''}
+            >
+              <Cell fill="#94a3b8" />
+              <Cell fill="#f59e0b" />
+              <Cell fill="#8b5cf6" />
+              <Cell fill="#22c55e" />
+            </Pie>
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
       </div>
 
       {/* Quick Actions */}

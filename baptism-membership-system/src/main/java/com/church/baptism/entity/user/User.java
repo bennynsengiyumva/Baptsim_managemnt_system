@@ -10,6 +10,7 @@ import java.util.List;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -39,7 +40,7 @@ public class User extends AuditableEntity {
     @Column(unique = true, nullable = false)
     private String email;
 
-    @Column(unique = true)
+    @Column(nullable = true)
     private String phone;
 
     @Column(nullable = false)
@@ -56,9 +57,24 @@ public class User extends AuditableEntity {
     private String twoFactorCode;
     private LocalDateTime twoFactorCodeExpiry;
 
-    @Lob
-    @Column(columnDefinition = "MEDIUMTEXT")
+    @Column(columnDefinition = "TEXT")
     private String avatar;
+
+    private String preferredLanguage = "en";
+
+    private String gender;
+
+    private LocalDate dateOfBirth;
+
+    private String address;
+
+    private String emergencyContact;
+
+    @Column(name = "signature_path")
+    private String signaturePath;
+
+    @Column(name = "role_change_message", columnDefinition = "TEXT")
+    private String roleChangeMessage;
 
     @OneToMany(mappedBy = "pastor")
     private List<Church> churches;

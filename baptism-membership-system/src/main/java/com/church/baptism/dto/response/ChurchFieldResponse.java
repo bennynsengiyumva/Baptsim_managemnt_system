@@ -10,6 +10,10 @@ public class ChurchFieldResponse {
     private boolean active;
     private Long unionId;
     private String unionName;
+    private Long headUserId;
+    private String headUserName;
+    private String headUserEmail;
+    private String headUserPhone;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -29,4 +33,12 @@ public class ChurchFieldResponse {
     public void setUnionId(Long unionId) { this.unionId = unionId; }
     public String getUnionName() { return unionName; }
     public void setUnionName(String unionName) { this.unionName = unionName; }
+    public Long getHeadUserId() { return headUserId; }
+    public void setHeadUserId(Long headUserId) { this.headUserId = headUserId; }
+    public String getHeadUserName() { return headUserName; }
+    public void setHeadUserName(String headUserName) { this.headUserName = headUserName; }
+    public String getHeadUserEmail() { return headUserEmail; }
+    public void setHeadUserEmail(String headUserEmail) { this.headUserEmail = headUserEmail; }
+    public String getHeadUserPhone() { return headUserPhone; }
+    public void setHeadUserPhone(String headUserPhone) { this.headUserPhone = headUserPhone; }
 }

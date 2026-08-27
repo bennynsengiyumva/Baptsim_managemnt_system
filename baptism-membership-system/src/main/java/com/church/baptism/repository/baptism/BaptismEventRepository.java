@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 public interface BaptismEventRepository extends JpaRepository<BaptismEvent, Long> {
+    List<BaptismEvent> findByEventDateGreaterThanEqualOrderByEventDateAsc(LocalDate date);
     List<BaptismEvent> findByEventDateAfterOrderByEventDateAsc(LocalDate date);
     List<BaptismEvent> findByStatusOrderByEventDateDesc(BaptismEventStatus status);
     List<BaptismEvent> findAllByOrderByEventDateDesc();

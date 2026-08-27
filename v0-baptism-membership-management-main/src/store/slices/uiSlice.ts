@@ -3,14 +3,14 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 interface UIState {
   sidebarOpen: boolean;
   darkMode: boolean;
-  language: 'en' | 'rw' | 'fr';
+  language: 'en' | 'rw';
   selectedModule: string | null;
 }
 
 const initialState: UIState = {
   sidebarOpen: true,
   darkMode: localStorage.getItem('darkMode') === 'true',
-  language: (localStorage.getItem('language') as 'en' | 'rw' | 'fr') || 'en',
+  language: (localStorage.getItem('language') as 'en' | 'rw') || 'en',
   selectedModule: null,
 };
 
@@ -32,7 +32,7 @@ const uiSlice = createSlice({
       state.darkMode = action.payload;
       localStorage.setItem('darkMode', String(state.darkMode));
     },
-    setLanguage: (state, action: PayloadAction<'en' | 'rw' | 'fr'>) => {
+    setLanguage: (state, action: PayloadAction<'en' | 'rw'>) => {
       state.language = action.payload;
       localStorage.setItem('language', action.payload);
     },

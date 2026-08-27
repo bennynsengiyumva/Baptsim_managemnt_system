@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { selectUser } from '@/store/authStore';
 import { churchService } from '@/services/churchService';
@@ -180,7 +181,7 @@ export default function PastorDashboard() {
               {t('common.welcomeUser', { name: user?.fullName || user?.email })}
             </h1>
             <p className="text-gray-500 dark:text-gray-400 mt-1">
-              {user?.districtName ? `${user.districtName} ${t('common.districtName')}` : t('common.districtName')} {t('common.managementOverview')}
+              {user?.districtName ? `${user.districtName} - ${t('common.managementOverview')}` : t('common.managementOverview')}
             </p>
           </div>
           <button onClick={loadData} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700" title={t('common.refresh')}>
@@ -191,7 +192,7 @@ export default function PastorDashboard() {
 
       {/* Aggregate Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+        <div onClick={() => navigate('/candidates')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.totalCandidates')}</p>
@@ -202,7 +203,7 @@ export default function PastorDashboard() {
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+        <div onClick={() => navigate('/candidates')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.registered')}</p>
@@ -213,7 +214,7 @@ export default function PastorDashboard() {
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+        <div onClick={() => navigate('/candidates')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.inProgress')}</p>
@@ -224,7 +225,7 @@ export default function PastorDashboard() {
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+        <div onClick={() => navigate('/candidates')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.readyForBaptism')}</p>
@@ -235,7 +236,7 @@ export default function PastorDashboard() {
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+        <div onClick={() => navigate('/candidates')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.baptized')}</p>
@@ -289,17 +290,38 @@ export default function PastorDashboard() {
         </div>
       </div>
 
+      {/* Baptism Status Distribution PieChart */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Baptism Status Distribution</h3>
+        <ResponsiveContainer width="100%" height={280}>
+          <PieChart>
+            <Pie
+              data={[
+                { name: 'Registered', value: progress.registered },
+                { name: 'In Progress', value: progress.inProgress },
+                { name: 'Ready for Baptism', value: progress.readyForBaptism },
+                { name: 'Baptized', value: progress.baptized },
+              ]}
+              cx="50%"
+              cy="50%"
+              innerRadius={60}
+              outerRadius={100}
+              paddingAngle={4}
+              dataKey="value"
+              label={({ name, value }) => value > 0 ? `${name}: ${value}` : ''}
+            >
+              <Cell fill="#94a3b8" />
+              <Cell fill="#f59e0b" />
+              <Cell fill="#8b5cf6" />
+              <Cell fill="#22c55e" />
+            </Pie>
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+
       {/* Quick Actions */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <button
-          onClick={() => navigate('/certificates')}
-          className="flex items-center gap-2 bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow text-left"
-        >
-          <FileSignature size={20} className="text-green-600" />
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {t('common.signCertificates')} {unsignedCerts.length > 0 && `(${unsignedCerts.length})`}
-          </span>
-        </button>
         <button
           onClick={() => navigate('/baptism')}
           className="flex items-center gap-2 bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow text-left"
@@ -428,7 +450,7 @@ export default function PastorDashboard() {
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-medium text-gray-900 dark:text-white">
-                      {new Date(event.eventDate).toLocaleDateString()}
+                      {event.eventName || new Date(event.eventDate).toLocaleDateString()}
                     </span>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                       event.status === 'CONFIRMED'
@@ -450,60 +472,6 @@ export default function PastorDashboard() {
                   </div>
                 </div>
               ))}
-            </div>
-          )}
-        </div>
-
-        {/* Unsigned Certificates */}
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-              <FileSignature size={18} className="text-primary" />
-              {t('common.certificatesAwaitingSignature')}
-            </h2>
-            <button onClick={() => navigate('/certificates')} className="text-sm text-primary hover:underline">
-              {t('common.viewAll')}
-            </button>
-          </div>
-          {unsignedCerts.length === 0 ? (
-            <p className="text-gray-400 text-sm py-4 text-center">{t('common.allCertificatesSigned')}</p>
-          ) : (
-            <div className="space-y-2">
-              {unsignedCerts.slice(0, 5).map((cert) => (
-                <div
-                  key={cert.id}
-                  className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
-                      <Users size={14} className="text-primary" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                        {cert.candidateName}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                        {new Date(cert.baptismDate).toLocaleDateString()} | {cert.location}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleSignCertificate(cert.id)}
-                    disabled={signingIds.has(cert.id)}
-                    className="shrink-0 text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-3 py-1.5 rounded-full font-medium hover:bg-green-200 dark:hover:bg-green-800 transition-colors disabled:opacity-50"
-                  >
-                    {signingIds.has(cert.id) ? (
-                      <Loader2 size={12} className="animate-spin inline mr-1" />
-                    ) : null}
-                    {t('common.sign')}
-                  </button>
-                </div>
-              ))}
-              {unsignedCerts.length > 5 && (
-                <p className="text-xs text-center text-gray-400 pt-2">
-                  {t('common.moreCount', { count: unsignedCerts.length - 5 })}
-                </p>
-              )}
             </div>
           )}
         </div>
@@ -540,7 +508,7 @@ export default function PastorDashboard() {
       {/* Church Detail Modal */}
       {showChurchModal && selectedChurch && (() => {
         const detail = churchDetails[selectedChurch.id];
-        const baptizedList = detail?.candidates.filter(c => c.status === 'BAPTIZED') || [];
+        const baptizedList = detail?.candidates.filter((c: any) => ['BAPTIZED', 'CERTIFICATE_GENERATED', 'CERTIFICATE_SIGNED', 'COURSE_COMPLETED', 'TRANSFERRED_TO_CMS'].includes(c.status)) || [];
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowChurchModal(false)}>
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -549,7 +517,7 @@ export default function PastorDashboard() {
                   <h2 className="text-xl font-bold text-gray-900 dark:text-white">{selectedChurch.churchName}</h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                     {selectedChurch.address && <span className="flex items-center gap-1"><MapPin size={12} /> {selectedChurch.address}</span>}
-                    {selectedChurch.districtName && <span className="ml-3 text-xs">{selectedChurch.districtName} {t('common.districtName')}</span>}
+                    {selectedChurch.districtName && <span className="ml-3 text-xs">{selectedChurch.districtName}</span>}
                   </p>
                 </div>
                 <button onClick={() => setShowChurchModal(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
@@ -622,15 +590,29 @@ export default function PastorDashboard() {
                   <div>
                     <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2 mb-3">
                       <Shield size={16} className="text-green-600" />
-                      {t('common.readyForCMS', { count: baptizedList.length })}
+                      Baptized Candidates ({baptizedList.length})
                     </h3>
                     <div className="space-y-2">
-                      {baptizedList.map(c => (
-                        <div key={c.id} className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 rounded-lg px-4 py-2.5">
-                          <p className="text-sm font-medium text-gray-900 dark:text-white">{c.fullName}</p>
-                          <CheckCircle size={16} className="text-green-600" />
-                        </div>
-                      ))}
+                      {baptizedList.map((c: any) => {
+                        const isBaptized = ['BAPTIZED', 'CERTIFICATE_GENERATED', 'CERTIFICATE_SIGNED', 'COURSE_COMPLETED', 'TRANSFERRED_TO_CMS'].includes(c.status);
+                        const hasCertificate = ['CERTIFICATE_GENERATED', 'CERTIFICATE_SIGNED', 'COURSE_COMPLETED', 'TRANSFERRED_TO_CMS'].includes(c.status);
+                        const isCourseComplete = ['COURSE_COMPLETED', 'TRANSFERRED_TO_CMS'].includes(c.status);
+                        return (
+                          <div key={c.id} className="bg-green-50 dark:bg-green-900/20 rounded-lg px-4 py-2.5">
+                            <div className="flex items-center justify-between mb-1">
+                              <p className="text-sm font-medium text-gray-900 dark:text-white">{c.fullName}</p>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${c.status === 'TRANSFERRED_TO_CMS' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'}`}>
+                                {c.status}
+                              </span>
+                            </div>
+                            <div className="flex gap-3 text-xs text-gray-500">
+                              <span className={isBaptized ? 'text-green-600' : 'text-gray-400'}>{isBaptized ? '✓' : '○'} Baptized</span>
+                              <span className={hasCertificate ? 'text-green-600' : 'text-gray-400'}>{hasCertificate ? '✓' : '○'} Certificate</span>
+                              <span className={isCourseComplete ? 'text-green-600' : 'text-gray-400'}>{isCourseComplete ? '✓' : '○'} Course</span>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

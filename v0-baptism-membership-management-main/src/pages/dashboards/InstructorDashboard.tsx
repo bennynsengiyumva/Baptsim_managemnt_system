@@ -4,8 +4,11 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Users, BookOpen, Clock, Award, Bell, Calendar,
-  Loader2, User, GraduationCap, RefreshCw, CheckCircle2
+  Loader2, User, GraduationCap, RefreshCw, CheckCircle2, Layers
 } from 'lucide-react';
+import {
+  PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend
+} from 'recharts';
 import { selectUser } from '@/store/authStore';
 import { candidateService } from '@/services/candidateService';
 import { instructorService } from '@/services/instructorService';
@@ -24,6 +27,8 @@ export default function InstructorDashboard() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [baptizedCompleted, setBaptizedCompleted] = useState(0);
   const [baptizedIncomplete, setBaptizedIncomplete] = useState(0);
+  const [baptizedStillStudying, setBaptizedStillStudying] = useState<Candidate[]>([]);
+  const [cohortStats, setCohortStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -35,23 +40,33 @@ export default function InstructorDashboard() {
 
   const loadData = async () => {
     try {
-      const [candData, eventsData, notifData, instructors] = await Promise.all([
-        candidateService.getAllCandidates(),
+      const [eventsData, notifData, instructors] = await Promise.all([
         baptismService.getUpcomingEvents().catch(() => []),
         notificationService.getMyNotifications().catch(() => ({ data: [] })),
         instructorService.getAllInstructors({ page: 1, pageSize: 100 }),
       ]);
 
-      setCandidates(Array.isArray(candData) ? candData : []);
       setUpcomingEvents(Array.isArray(eventsData) ? eventsData : []);
 
       const notifsRaw = Array.isArray(notifData) ? notifData : (notifData.data || []);
       setNotifications(notifsRaw.map((n: any) => ({ ...n, read: n.read ?? n.isRead ?? false })).slice(0, 5));
 
-      // Determine course completion for BAPTIZED candidates
+      // Find my instructor record by email
       const list = Array.isArray(instructors) ? instructors : Array.isArray((instructors as any)?.data) ? (instructors as any).data : [];
       const myInstructor = list.find((i: any) => i.email === user?.email);
+
       if (myInstructor) {
+        // Load only candidates assigned to this instructor
+        const candData = await candidateService.getCandidatesByInstructor(String(myInstructor.id));
+        setCandidates(Array.isArray(candData) ? candData : []);
+
+        // Load cohort stats
+        import('@/services/cohortService').then(({ cohortService }) => {
+          cohortService.getInstructorStats(myInstructor.id).then((stats: any) => {
+            setCohortStats(stats);
+          }).catch(() => {});
+        });
+
         const grades: LessonGrade[] = await lessonService.getGradesByInstructor(myInstructor.id).catch(() => []);
         const completedMap = new Map<number, boolean>();
         grades.forEach(g => {
@@ -59,15 +74,20 @@ export default function InstructorDashboard() {
           if (!completedMap.has(cid)) completedMap.set(cid, true);
           if (!g.completed) completedMap.set(cid, false);
         });
-        const baptizedCandidates = (Array.isArray(candData) ? candData : []).filter((c: Candidate) => c.status === 'BAPTIZED');
+        const baptizedCandidates = (Array.isArray(candData) ? candData : []).filter((c: Candidate) => ['BAPTIZED', 'CERTIFICATE_GENERATED', 'CERTIFICATE_SIGNED', 'COURSE_COMPLETED'].includes(c.status));
         let completed = 0;
         let incomplete = 0;
+        const stillStudying: Candidate[] = [];
         baptizedCandidates.forEach((c: Candidate) => {
           if (completedMap.get(Number(c.id))) completed++;
-          else incomplete++;
+          else {
+            incomplete++;
+            stillStudying.push(c);
+          }
         });
         setBaptizedCompleted(completed);
         setBaptizedIncomplete(incomplete);
+        setBaptizedStillStudying(stillStudying);
       }
     } catch { /* silent */ }
     setLoading(false);
@@ -75,7 +95,6 @@ export default function InstructorDashboard() {
 
   const inProgress = candidates.filter(c => c.status === 'IN_PROGRESS');
   const readyForBaptism = candidates.filter(c => c.status === 'READY_FOR_BAPTISM');
-  const baptized = candidates.filter(c => c.status === 'BAPTIZED');
 
   const breakdown = [
     { label: t('common.takingCourses'), count: inProgress.length, color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-50 dark:bg-blue-900/30' },
@@ -112,7 +131,7 @@ export default function InstructorDashboard() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+        <div onClick={() => navigate('/candidates')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.totalCandidates')}</p>
@@ -123,7 +142,7 @@ export default function InstructorDashboard() {
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+        <div onClick={() => navigate('/candidates')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.inProgress')}</p>
@@ -134,7 +153,7 @@ export default function InstructorDashboard() {
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+        <div onClick={() => navigate('/candidates')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.readyForBaptism')}</p>
@@ -145,21 +164,21 @@ export default function InstructorDashboard() {
             </div>
           </div>
         </div>
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+        <div onClick={() => navigate('/candidates')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.baptized')}</p>
-                <p className="text-3xl font-bold mt-1 text-green-600 dark:text-green-400">{baptized.length}</p>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Baptized & Studying</p>
+                <p className="text-3xl font-bold mt-1 text-green-600 dark:text-green-400">{baptizedCompleted + baptizedIncomplete}</p>
               </div>
               <div className="p-3 bg-green-50 dark:bg-green-900/30 rounded-xl">
                 <Award size={24} className="text-green-600 dark:text-green-400" />
               </div>
             </div>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5">
+          <div onClick={() => navigate('/candidates')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('common.cmsReady')}</p>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Course Complete</p>
                 <p className="text-3xl font-bold mt-1 text-green-700 dark:text-green-300">{baptizedCompleted}</p>
               </div>
               <div className="p-3 bg-green-100 dark:bg-green-900/40 rounded-xl">
@@ -168,6 +187,56 @@ export default function InstructorDashboard() {
             </div>
           </div>
       </div>
+
+      {/* Cohort Stats */}
+      {cohortStats && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div onClick={() => navigate('/instructor/cohorts')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Cohorts</p>
+                <p className="text-3xl font-bold mt-1 text-gray-900 dark:text-white">{cohortStats.totalCohorts}</p>
+              </div>
+              <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl">
+                <Layers size={24} className="text-indigo-600 dark:text-indigo-400" />
+              </div>
+            </div>
+          </div>
+          <div onClick={() => navigate('/instructor/cohorts')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Active Cohorts</p>
+                <p className="text-3xl font-bold mt-1 text-green-600 dark:text-green-400">{cohortStats.activeCohorts}</p>
+              </div>
+              <div className="p-3 bg-green-50 dark:bg-green-900/30 rounded-xl">
+                <CheckCircle2 size={24} className="text-green-600 dark:text-green-400" />
+              </div>
+            </div>
+          </div>
+          <div onClick={() => navigate('/instructor/cohorts')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Cohort Candidates</p>
+                <p className="text-3xl font-bold mt-1 text-blue-600 dark:text-blue-400">{cohortStats.totalCandidates}</p>
+              </div>
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
+                <Users size={24} className="text-blue-600 dark:text-blue-400" />
+              </div>
+            </div>
+          </div>
+          <div onClick={() => navigate('/instructor/cohorts')} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Completed</p>
+                <p className="text-3xl font-bold mt-1 text-purple-600 dark:text-purple-400">{cohortStats.completedCandidates}</p>
+              </div>
+              <div className="p-3 bg-purple-50 dark:bg-purple-900/30 rounded-xl">
+                <Award size={24} className="text-purple-600 dark:text-purple-400" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Progress Graph */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-6">
@@ -191,6 +260,37 @@ export default function InstructorDashboard() {
         {candidates.length === 0 && (
           <p className="text-center text-gray-400 py-4 text-sm">{t('common.noCandidatesAssignedYet')}</p>
         )}
+      </div>
+
+      {/* Assigned Candidates Status PieChart */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Assigned Candidates Status Distribution</h3>
+        <ResponsiveContainer width="100%" height={280}>
+          <PieChart>
+            <Pie
+              data={[
+                { name: 'Taking Courses', value: inProgress.length },
+                { name: 'Ready for Baptism', value: readyForBaptism.length },
+                { name: 'Course Complete', value: baptizedCompleted },
+                { name: 'Course Incomplete', value: baptizedIncomplete },
+              ]}
+              cx="50%"
+              cy="50%"
+              innerRadius={60}
+              outerRadius={100}
+              paddingAngle={4}
+              dataKey="value"
+              label={({ name, value }) => value > 0 ? `${name}: ${value}` : ''}
+            >
+              <Cell fill="#f59e0b" />
+              <Cell fill="#8b5cf6" />
+              <Cell fill="#22c55e" />
+              <Cell fill="#3b82f6" />
+            </Pie>
+            <Tooltip />
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
       </div>
 
       {/* Quick Actions */}
@@ -224,6 +324,34 @@ export default function InstructorDashboard() {
           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('common.baptismView')}</span>
         </button>
       </div>
+
+      {/* Baptized Candidates Still Studying */}
+      {baptizedStillStudying.length > 0 && (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-6">
+          <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
+            <Award size={18} className="text-emerald-600" />
+            Baptized Candidates Still Studying ({baptizedStillStudying.length})
+          </h2>
+          <div className="space-y-2">
+            {baptizedStillStudying.map(c => (
+              <div key={c.id} onClick={() => navigate(`/candidates/${c.id}`)} className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 text-sm font-bold">
+                    {c.fullName?.charAt(0)}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{c.fullName}</p>
+                    <p className="text-xs text-gray-500">Baptized — course incomplete</p>
+                  </div>
+                </div>
+                <button className="text-xs text-primary hover:underline" onClick={(e) => { e.stopPropagation(); navigate(`/candidates/${c.id}`); }}>
+                  View →
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Two Columns: Candidates + Events */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -291,9 +419,9 @@ export default function InstructorDashboard() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 dark:text-white">
-                      {new Date(event.eventDate).toLocaleDateString()}
+                      {event.eventName || new Date(event.eventDate).toLocaleDateString()}
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{event.location}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{new Date(event.eventDate).toLocaleDateString()} &middot; {event.location}</p>
                   </div>
                     <span className="text-xs text-gray-500">{event.registeredCount} {t('common.regAbbr')}</span>
                 </div>

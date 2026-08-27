@@ -13,7 +13,9 @@ export const baptismService = {
     apiClient.get<BaptismEvent>(`/api/baptisms/events/${id}`).then((r) => r.data),
 
   createEvent: (data: {
+    eventName: string;
     eventDate: string;
+    eventTime?: string;
     location: string;
     officiatingPastor: string;
     description?: string;
@@ -35,9 +37,17 @@ export const baptismService = {
   unregisterCandidate: (baptismId: string) =>
     apiClient.delete(`/api/baptisms/${baptismId}/unregister`),
 
+  // Pending requests
+  getPendingRequests: () =>
+    apiClient.get<BaptismRegistration[]>('/api/baptisms/pending').then((r) => r.data),
+
   // Approval
   approveRegistration: (eventId: string, candidateId: string) =>
     apiClient.put('/api/baptisms/approve', null, { params: { eventId, candidateId } }).then((r) => r.data),
+
+  // Rejection
+  rejectRegistration: (eventId: string, candidateId: string) =>
+    apiClient.put('/api/baptisms/reject', null, { params: { eventId, candidateId } }).then((r) => r.data),
 
   // Confirmation
   confirmBaptism: (baptismId: string, photos?: File[]) => {
@@ -54,6 +64,10 @@ export const baptismService = {
 
   updateOrder: (baptismId: string, order: number) =>
     apiClient.put(`/api/baptisms/${baptismId}/order`, null, { params: { order } }),
+
+  // CMS Transfer
+  cmsTransfer: (baptismId: string) =>
+    apiClient.put<BaptismRegistration>(`/api/baptisms/${baptismId}/cms-transfer`).then((r) => r.data),
 
   // History
   getAllBaptisms: () =>

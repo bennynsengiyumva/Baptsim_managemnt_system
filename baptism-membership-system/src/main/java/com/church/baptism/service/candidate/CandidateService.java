@@ -138,9 +138,26 @@ public class CandidateService {
     }
 
     public List<CandidateResponse> getCandidatesByEmail(String email) {
-        return repository.findByEmail(email).stream()
+        List<CandidateResponse> results = repository.findByEmail(email).stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
+
+        // Fallback: if no candidate found by email field, try to find by matching User email
+        if (results.isEmpty() && email != null) {
+            userRepository.findByEmail(email).ifPresent(user -> {
+                repository.findAll().stream()
+                    .filter(c -> c.getFullName() != null && c.getFullName().equalsIgnoreCase(user.getFullName()))
+                    .filter(c -> c.getEmail() == null || c.getEmail().isBlank())
+                    .findFirst()
+                    .ifPresent(candidate -> {
+                        candidate.setEmail(email);
+                        repository.save(candidate);
+                        results.add(mapToResponse(candidate));
+                    });
+            });
+        }
+
+        return results;
     }
 
     // ================= GET BY INSTRUCTOR =================
@@ -333,8 +350,18 @@ public class CandidateService {
         repository.deleteById(id);
     }
 
+    // ================= PUBLIC HELPERS =================
+    public Candidate getCandidateEntity(Long id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Candidate not found: " + id));
+    }
+
+    public Candidate saveCandidate(Candidate candidate) {
+        return repository.save(candidate);
+    }
+
     // ================= MAPPER =================
-    private CandidateResponse mapToResponse(Candidate candidate) {
+    public CandidateResponse mapToResponse(Candidate candidate) {
         CandidateResponse r = new CandidateResponse();
         r.setId(candidate.getId());
         r.setFullName(candidate.getFullName());
@@ -344,6 +371,7 @@ public class CandidateService {
         r.setAddress(candidate.getAddress());
         r.setDateOfBirth(candidate.getDateOfBirth());
         r.setStatus(candidate.getStatus().name());
+        r.setInstructorApproved(candidate.isInstructorApproved());
         r.setChurchId(candidate.getChurch() != null ? candidate.getChurch().getId() : null);
         r.setChurchName(candidate.getChurch() != null ? candidate.getChurch().getChurchName() : null);
         if (candidate.getInstructor() != null) {
@@ -352,6 +380,8 @@ public class CandidateService {
             r.setInstructorEmail(candidate.getInstructor().getEmail());
             r.setInstructorPhone(candidate.getInstructor().getPhone());
         }
+        r.setProfilePicturePath(candidate.getProfilePicturePath());
+        r.setCreatedAt(candidate.getCreatedAt());
         return r;
     }
 

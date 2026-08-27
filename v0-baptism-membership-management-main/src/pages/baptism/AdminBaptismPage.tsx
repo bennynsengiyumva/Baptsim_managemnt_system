@@ -12,6 +12,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import DataTable from '@/components/ui/DataTable';
 import toast from 'react-hot-toast';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
 
 export default function AdminBaptismPage() {
   const navigate = useNavigate();
@@ -19,11 +20,14 @@ export default function AdminBaptismPage() {
   const { t } = useTranslation();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [form, setForm] = useState({
+    eventName: '',
     eventDate: '',
+    eventTime: '',
     location: '',
     officiatingPastor: '',
     description: '',
   });
+  const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; variant: 'danger' | 'warning' }>({ isOpen: false, title: '', message: '', onConfirm: () => {}, variant: 'danger' });
 
   const { data: events = [], isLoading } = useQuery({
     queryKey: ['baptism-events'],
@@ -38,7 +42,7 @@ export default function AdminBaptismPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['baptism-events'] });
       setShowCreateForm(false);
-      setForm({ eventDate: '', location: '', officiatingPastor: '', description: '' });
+      setForm({ eventName: '', eventDate: '', eventTime: '', location: '', officiatingPastor: '', description: '' });
       toast.success('Baptism event created');
     },
     onError: (err: any) => toast.error(err.message || 'Failed to create event'),
@@ -70,6 +74,11 @@ export default function AdminBaptismPage() {
   };
 
   const columns = [
+    {
+      key: 'eventName' as keyof BaptismEvent,
+      label: 'Event Name',
+      render: (v: any) => <span className="font-medium text-gray-900 dark:text-white">{v}</span>,
+    },
     {
       key: 'eventDate' as keyof BaptismEvent,
       label: t('common.date'),
@@ -127,7 +136,18 @@ export default function AdminBaptismPage() {
           )}
           {row.status !== 'CANCELLED' && row.status !== 'COMPLETED' && (
             <button
-              onClick={() => statusMutation.mutate({ id: row.id, status: 'CANCELLED' })}
+              onClick={() => {
+                setConfirmDialog({
+                  isOpen: true,
+                  title: 'Cancel Event',
+                  message: 'Are you sure you want to cancel this baptism event?',
+                  variant: 'danger',
+                  onConfirm: () => {
+                    statusMutation.mutate({ id: row.id, status: 'CANCELLED' });
+                    setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                  },
+                });
+              }}
               className="p-1 text-red-600 hover:bg-red-50 rounded"
               title={t('common.cancelEvent')}
             >
@@ -162,6 +182,16 @@ export default function AdminBaptismPage() {
       {showCreateForm && (
         <Card title={t('common.scheduleNewBaptismEvent')}>
           <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2">
+              <label className="block text-sm font-medium mb-1">Event Name</label>
+              <input
+                value={form.eventName}
+                onChange={(e) => setForm({ ...form, eventName: e.target.value })}
+                placeholder="e.g. July 2026 Baptism Ceremony"
+                className="w-full border rounded px-3 py-2"
+                required
+              />
+            </div>
             <div>
               <label className="block text-sm font-medium mb-1">{t('common.date')}</label>
               <input
@@ -170,6 +200,15 @@ export default function AdminBaptismPage() {
                 onChange={(e) => setForm({ ...form, eventDate: e.target.value })}
                 className="w-full border rounded px-3 py-2"
                 required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Event Time</label>
+              <input
+                type="time"
+                value={form.eventTime}
+                onChange={(e) => setForm({ ...form, eventTime: e.target.value })}
+                className="w-full border rounded px-3 py-2"
               />
             </div>
             <div>
@@ -216,6 +255,7 @@ export default function AdminBaptismPage() {
           emptyMessage={t('common.noBaptismEventsScheduled')}
         />
       </Card>
+      <ConfirmDialog isOpen={confirmDialog.isOpen} title={confirmDialog.title} message={confirmDialog.message} variant={confirmDialog.variant} onConfirm={confirmDialog.onConfirm} onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))} />
     </div>
   );
 }

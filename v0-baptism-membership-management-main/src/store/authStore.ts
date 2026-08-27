@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import apiClient from '@/services/api';
 import { User } from '@/types';
+import i18n from '@/i18n/i18n';
 
 interface AuthState {
   user: User | null;
@@ -12,6 +13,7 @@ interface AuthState {
   twoFactorEmail: string | null;
   users: User[];
   usersLoading: boolean;
+  roleChangeMessage: string | null;
 }
 
 const initialState: AuthState = {
@@ -24,13 +26,14 @@ const initialState: AuthState = {
   twoFactorEmail: null,
   users: [],
   usersLoading: false,
+  roleChangeMessage: null,
 };
 
 function normalizeAuthResponse(raw: any): { token: string; user: User } {
   const token = raw.token;
   const source = raw.user ?? raw;
   const user = {
-    id:       source.id       ?? source.userId   ?? `temp-${Date.now()}`,
+      id: source.id ?? source.userId ?? `temp-${Date.now()}`,
     fullName: source.fullName ?? source.name      ?? (source.email ? source.email.split('@')[0] : 'User'),
     email:    source.email,
     phone:    source.phone    ?? '',
@@ -38,6 +41,12 @@ function normalizeAuthResponse(raw: any): { token: string; user: User } {
     enabled:  source.enabled  ?? true,
     ...source,
   } as User;
+
+  // Convert relative profile picture path to full URL
+  if (user.profilePictureUrl && !user.profilePictureUrl.startsWith('http')) {
+    user.profilePictureUrl = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8084'}${user.profilePictureUrl}`;
+  }
+
   return { token, user };
 }
 
@@ -62,9 +71,15 @@ export const loginUser = createAsyncThunk(
       }
 
       const { token, user } = normalizeAuthResponse(data);
+      
+      // If there's a role change message, don't store the token - user must login again
+      if (data.roleChangeMessage) {
+        return { token: null, user: null, roleChangeMessage: data.roleChangeMessage };
+      }
+      
       localStorage.setItem('authToken', token);
       localStorage.setItem('user', JSON.stringify(user));
-      return { token, user };
+      return { token, user, roleChangeMessage: null };
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Login failed');
     }
@@ -93,6 +108,21 @@ export const resendTwoFactorCode = createAsyncThunk(
       await apiClient.post('/api/auth/two-factor/resend', { email });
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to resend code');
+    }
+  }
+);
+
+export const loginWithGoogle = createAsyncThunk(
+  'auth/loginWithGoogle',
+  async (idToken: string, { rejectWithValue }) => {
+    try {
+      const response = await apiClient.post('/api/auth/google', { idToken });
+      const { token, user } = normalizeAuthResponse(response.data);
+      localStorage.setItem('authToken', token);
+      localStorage.setItem('user', JSON.stringify(user));
+      return { token, user };
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Google login failed');
     }
   }
 );
@@ -270,6 +300,9 @@ const authSlice = createSlice({
       state.requiresTwoFactor = false;
       state.twoFactorEmail = null;
     },
+    clearRoleChangeMessage: (state) => {
+      state.roleChangeMessage = null;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -279,11 +312,24 @@ const authSlice = createSlice({
         if (action.payload.requiresTwoFactor) {
           state.requiresTwoFactor = true;
           state.twoFactorEmail    = action.payload.email;
+        } else if (action.payload.roleChangeMessage) {
+          // Role changed - don't authenticate, just show the message
+          state.isAuthenticated   = false;
+          state.user              = null;
+          state.token             = null;
+          state.roleChangeMessage = action.payload.roleChangeMessage;
         } else {
           state.isAuthenticated   = true;
           state.user              = action.payload.user ?? null;
           state.token             = action.payload.token ?? null;
           state.requiresTwoFactor = false;
+          state.roleChangeMessage = null;
+          // Set language from user preference
+          const user = action.payload.user;
+          if (user?.preferredLanguage) {
+            localStorage.setItem('language', user.preferredLanguage);
+            i18n.changeLanguage(user.preferredLanguage);
+          }
         }
         state.error = null;
       })
@@ -375,7 +421,7 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearError, setUser, clearTwoFactorState } = authSlice.actions;
+export const { clearError, setUser, clearTwoFactorState, clearRoleChangeMessage } = authSlice.actions;
 export default authSlice.reducer;
 
 // ── Selectors ────────────────────────────────────────────────────────────────
@@ -388,6 +434,7 @@ export const selectUsers             = (state: any) => state.auth.users;
 export const selectUsersLoading      = (state: any) => state.auth.usersLoading;
 export const selectRequiresTwoFactor = (state: any) => state.auth.requiresTwoFactor;
 export const selectTwoFactorEmail    = (state: any) => state.auth.twoFactorEmail;
+export const selectRoleChangeMessage = (state: any) => state.auth.roleChangeMessage;
 
 // Role helpers
 export const selectIsAdmin           = (state: any) => state.auth.user?.role === 'ADMIN';

@@ -21,6 +21,9 @@ public class Candidate {
     private String phone;
     private String address;
     private String referralSource;
+    private String profilePicturePath;
+
+    private String preferredCourseLanguage = "en";
 
     @ManyToOne
     @JoinColumn(name = "church_id")
@@ -33,6 +36,8 @@ public class Candidate {
     @Enumerated(EnumType.STRING)
     private CandidateStatus status = CandidateStatus.REGISTERED;
 
+    private boolean instructorApproved = false;
+
     private LocalDateTime createdAt;
     private LocalDate baptismDate;
 
@@ -40,7 +45,13 @@ public class Candidate {
         REGISTERED,
         IN_PROGRESS,
         READY_FOR_BAPTISM,
-        BAPTIZED
+        BAPTISM_REQUEST_PENDING,
+        APPROVED_FOR_BAPTISM,
+        BAPTIZED,
+        CERTIFICATE_GENERATED,
+        CERTIFICATE_SIGNED,
+        COURSE_COMPLETED,
+        TRANSFERRED_TO_CMS
     }
 
     // GETTERS & SETTERS
@@ -68,6 +79,12 @@ public class Candidate {
     public String getReferralSource() { return referralSource; }
     public void setReferralSource(String referralSource) { this.referralSource = referralSource; }
 
+    public String getProfilePicturePath() { return profilePicturePath; }
+    public void setProfilePicturePath(String profilePicturePath) { this.profilePicturePath = profilePicturePath; }
+
+    public String getPreferredCourseLanguage() { return preferredCourseLanguage; }
+    public void setPreferredCourseLanguage(String preferredCourseLanguage) { this.preferredCourseLanguage = preferredCourseLanguage; }
+
     public Church getChurch() { return church; }
     public void setChurch(Church church) { this.church = church; }
 
@@ -76,6 +93,9 @@ public class Candidate {
 
     public CandidateStatus getStatus() { return status; }
     public void setStatus(CandidateStatus status) { this.status = status; }
+
+    public boolean isInstructorApproved() { return instructorApproved; }
+    public void setInstructorApproved(boolean instructorApproved) { this.instructorApproved = instructorApproved; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

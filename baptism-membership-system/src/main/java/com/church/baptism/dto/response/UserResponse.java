@@ -30,4 +30,10 @@ public class UserResponse {
     private Long churchId;
     private boolean twoFactorEnabled;
     private String createdAt;
+    private String preferredLanguage;
+    private String gender;
+    private String dateOfBirth;
+    private String address;
+    private String emergencyContact;
+    private String signaturePath;
 }

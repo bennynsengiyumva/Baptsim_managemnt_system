@@ -1,6 +1,6 @@
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { GraduationCap, Eye } from 'lucide-react';
+import { GraduationCap, Eye, Download } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { lessonService } from '@/services/lessonService';
 import { instructorService } from '@/services/instructorService';
@@ -27,7 +27,7 @@ export default function InstructorGradesPage() {
 
   const instructorId = (instructors as any)?.id;
 
-  const { data: grades = [] } = useQuery({
+  const { data: grades = [], isLoading } = useQuery({
     queryKey: ['instructor-grades', instructorId],
     queryFn: async () => {
       try {
@@ -40,14 +40,75 @@ export default function InstructorGradesPage() {
     enabled: !!instructorId,
   });
 
+  const exportCSV = () => {
+    if (grades.length === 0) {
+      toast.error('No grades to export');
+      return;
+    }
+    const headers = ['Course', 'Candidate', 'Best Score', 'Passing Score', 'Attempts Used', 'Status'];
+    const rows = grades.map((row: LessonGrade) => [
+      row.lessonTitle,
+      row.candidateName,
+      `${row.bestScore}%`,
+      `${row.requiredScore}%`,
+      row.attemptsUsed,
+      row.completed ? 'Passed' : 'In Progress',
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `grades-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Grades exported');
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
+          <div className="space-y-2">
+            <div className="h-8 w-32 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
+            <div className="h-4 w-48 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
+          </div>
+        </div>
+        <div className="bg-white dark:bg-slate-800 rounded-xl border p-6">
+          <div className="space-y-3">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="flex gap-4">
+                <div className="h-4 flex-1 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
+                <div className="h-4 w-32 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
+                <div className="h-4 w-16 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
+                <div className="h-4 w-16 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <GraduationCap size={32} className="text-indigo-600" />
-        <div>
-          <h1 className="text-3xl font-bold">{t('common.grades')}</h1>
-          <p className="text-slate-500">{t('common.viewAllGradesDesc')}</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <GraduationCap size={32} className="text-indigo-600" />
+          <div>
+            <h1 className="text-3xl font-bold">{t('common.grades')}</h1>
+            <p className="text-slate-500">{t('common.viewAllGradesDesc')}</p>
+          </div>
         </div>
+        {grades.length > 0 && (
+          <button
+            onClick={exportCSV}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
+          >
+            <Download size={16} /> Export CSV
+          </button>
+        )}
       </div>
 
       <Card>
